@@ -22,7 +22,8 @@ import sys
 import time
 import datetime
 import csv
-from playwright.sync_api import Page, Playwright, sync_playwright
+from typing import Dict, Optional, Union
+from playwright.sync_api import Browser, Page, Playwright, sync_playwright
 
 # 导入重构后的统一组件
 from amazon_product_parser import AmazonProductParser
@@ -30,7 +31,12 @@ from product_data import ProductData
 from unified_form_filler import UnifiedFormFiller
 from ai_category_validator import AICategoryValidator
 from csv_logger import write_unreasonable_category_to_csv, write_processing_exception_to_csv, csv_logger
-from ui_prompter import wait_for_user_confirmation, prompt_user_choice, prompt_text_input
+from ui_prompter import (
+    ProcessUIController,
+    prompt_text_input,
+    prompt_user_choice,
+    wait_for_user_confirmation,
+)
 
     
 # 登录信息
@@ -1844,39 +1850,65 @@ def process_product_edit_enhanced(context, edit_page: Page, manual_mode: bool = 
         return False
 
 
-def run_manual_mode(context, page):
+def run_manual_mode(context, page, controller: Optional[ProcessUIController] = None) -> Dict[str, Union[int, bool]]:
     """手动审核模式 - 逐个产品审核，可切换自动模式"""
-    print("\n" + "🔍"*20)
+    print("\n" + "🔍" * 20)
     print("🎯 店小秘手动审核模式")
-    print("🔍"*20)
-    
-    # Get all edit buttons
-    edit_buttons, count = get_edit_buttons(page)
-    
+    print("🔍" * 20)
+
+    _, count = get_edit_buttons(page)
+
+    if controller:
+        controller.update_progress(0, count)
+        if count > 0:
+            controller.set_status(f"共发现 {count} 个待处理产品")
+        else:
+            controller.set_status("未找到待处理的产品")
+
     if count == 0:
         print("❌ 未找到编辑按钮!")
-        return
-    
+        csv_logger.print_daily_summary()
+        return {
+            "processed": 0,
+            "skipped": 0,
+            "errors": 0,
+            "total": 0,
+            "stopped_by_panel": False,
+            "stopped_by_choice": False,
+        }
+
     print(f"📊 发现 {count} 个产品待处理")
-    
+
     processed = 0
     skipped = 0
     errors = 0
     auto_mode = False
-    
-    # Process each product with manual review
+    stopped_by_panel = False
+    stopped_by_choice = False
+
     for i in range(count):
-        print(f"\n{'='*60}")
-        print(f"🔍 处理产品 {i+1}/{count}")
-        print("="*60)
-        
+        current_index = i + 1
+        print(f"\n{'=' * 60}")
+        print(f"🔍 处理产品 {current_index}/{count}")
+        print("=" * 60)
+
+        if controller:
+            controller.update_progress(current_index, count)
+            controller.set_status(f"正在处理产品 {current_index}/{count}")
+            if not controller.wait_if_paused():
+                stopped_by_panel = True
+                print("🛑 控制面板暂停/停止，终止后续处理")
+                break
+            if controller.should_stop():
+                stopped_by_panel = True
+                print("🛑 控制面板已停止流程")
+                break
+
         try:
-            # Get fresh reference to the button (DOM might change)
             buttons, _ = get_edit_buttons(page)
             if i < buttons.count():
-                  # Click the edit button
                 print("🔍 点击编辑按钮...")
-                edit_button=buttons.nth(i)
+                edit_button = buttons.nth(i)
                 with page.context.expect_page() as edit_page_info:
                     edit_button.click()
                 edit_page = edit_page_info.value
@@ -1885,20 +1917,32 @@ def run_manual_mode(context, page):
                 success = process_product_edit_enhanced(context, edit_page, manual_mode=True)
                 if success:
                     processed += 1
-                    print(f"✅ 产品 {i+1} 处理完成")
+                    print(f"✅ 产品 {current_index} 处理完成")
+                    if controller:
+                        controller.set_status(f"✅ 产品 {current_index}/{count} 处理完成")
                 else:
                     skipped += 1
-                    print(f"⏭️ 产品 {i+1} 已跳过")
+                    print(f"⏭️ 产品 {current_index} 已跳过")
+                    if controller:
+                        controller.set_status(f"⏭️ 产品 {current_index}/{count} 已跳过，等待下一项")
             else:
-                print(f"⚠️ 产品 {i+1} 按钮索引超出范围，跳过")
                 skipped += 1
-                
+                print(f"⚠️ 产品 {current_index} 按钮索引超出范围，跳过")
+                if controller:
+                    controller.set_status(f"⚠️ 产品 {current_index}/{count} 未找到按钮，已跳过")
+
         except Exception as e:
-            print(f"❌ 处理产品 {i+1} 时出错: {e}")
             errors += 1
-        
-        # 询问是否继续
-        if i < count - 1:  # 不是最后一个产品
+            print(f"❌ 处理产品 {current_index} 时出错: {e}")
+            if controller:
+                controller.set_status(f"❌ 产品 {current_index}/{count} 处理失败，已记录异常")
+
+        if controller and controller.should_stop():
+            stopped_by_panel = True
+            print("🛑 控制面板已停止流程")
+            break
+
+        if i < count - 1 and not stopped_by_panel:
             print(f"\n📊 当前进度: 已处理 {processed}, 已跳过 {skipped}, 错误 {errors}")
             if not auto_mode:
                 continue_choice = prompt_user_choice(
@@ -1915,25 +1959,46 @@ def run_manual_mode(context, page):
                 )
                 if continue_choice == "N":
                     print("🛑 用户选择结束处理")
+                    stopped_by_choice = True
                     break
                 elif continue_choice == "A":
                     print("AUTO 用户选择自动继续不再询问")
                     auto_mode = True
-        
-        # Wait between operations
+
+        if stopped_by_panel:
+            break
+
         page.wait_for_timeout(2000)
-    
-    print(f"\n{'='*80}")
+
+    print(f"\n{'=' * 80}")
     print("📊 手动审核模式处理完成")
     print(f"✅ 成功处理: {processed} 个产品")
-    print(f"⏭️ 跳过: {skipped} 个产品") 
+    print(f"⏭️ 跳过: {skipped} 个产品")
     print(f"❌ 错误: {errors} 个产品")
-    
-    # 使用CSV日志工具显示汇总信息
+
     csv_logger.print_daily_summary()
-    
-    print("="*80)
-    
+
+    total_handled = processed + skipped + errors
+    if controller:
+        controller.update_progress(total_handled, count)
+        if stopped_by_panel:
+            controller.set_status("流程已通过控制面板停止")
+        elif stopped_by_choice:
+            controller.set_status("流程已根据用户选择结束")
+        else:
+            controller.set_status("手动审核模式处理完成")
+
+    print("=" * 80)
+
+    return {
+        "processed": processed,
+        "skipped": skipped,
+        "errors": errors,
+        "total": count,
+        "stopped_by_panel": stopped_by_panel,
+        "stopped_by_choice": stopped_by_choice,
+    }
+
 def closeAdModal(page: Page):
     """
     处理连续弹出的弹窗 - 优化版本
@@ -2015,66 +2080,96 @@ def run(playwright: Playwright) -> None:
     """
     主运行函数 - 保持原有的登录和会话管理逻辑
     """
-    # 检查脚本有效期
-    # check_script_expiration()
+    controller = ProcessUIController(title="店小秘流程控制面板")
+    browser: Optional[Browser] = None
+    context = None
 
-    
-    browser = playwright.chromium.launch(headless=False)
-    
-    # 尝试加载存储的状态
-    storage_state = f"{user_name}_auth_state.json"
-    if os.path.exists(storage_state):
-        context = browser.new_context(storage_state=storage_state, no_viewport=True)  
-    else:
-        context = browser.new_context(no_viewport=True)
-    
-    page = context.new_page()
-    
     try:
-        page.goto("https://www.dianxiaomi.com/")
-        # 检查是否已登录
-        if page.locator("text=立即登录").count() > 0:
-            raise Exception("Not logged in")
-    except Exception as e:
-        # 需要登录
-        print(f"🔐 需要登录: {e}")
-        page.get_by_role("textbox", name="请输入用户名").click()
-        page.get_by_role("textbox", name="请输入用户名").fill(user_name)
-        page.get_by_role("textbox", name="请输入密码").click()
-        page.get_by_role("textbox", name="请输入密码").fill(password)
-        wait_for_user_confirmation(
-            "请在浏览器中完成登录。完成后点击下方按钮继续。",
-            title="登录确认",
-            button_text="我已完成登录",
-            fallback_message="等待登录后按回车键继续\n",
-        )
-        # Save authentication state
-        page.context.storage_state(path=storage_state)
-        print("✅ 登录成功，状态已保存")
-    
-    page.goto("https://www.dianxiaomi.com/web/sheinProduct/draft")
-    print("✅ 已导航到采集箱列表")
-    wait_for_user_confirmation(
-        "请在浏览器中手动筛选需要处理的列表项，准备好后点击继续。",
-        title="筛选确认",
-        button_text="筛选完成，继续",
-        fallback_message="请手动筛选列表后按回车键继续\n",
-    )
-    
+        controller.set_status("正在启动浏览器...")
+        browser = playwright.chromium.launch(headless=False)
 
-    closeAdModal(page)
-    run_manual_mode(context, page)
-    
-    # 清理资源
-    print("\n🏁 所有操作已完成，浏览器保持打开状态供您继续操作...")
-    wait_for_user_confirmation(
-        "点击下方按钮即可退出程序并关闭浏览器。",
-        title="退出程序",
-        button_text="退出并关闭",
-        fallback_message="按Enter键退出程序并关闭浏览器...",
-    )
-    context.close()
-    browser.close()
+        storage_state = f"{user_name}_auth_state.json"
+        if os.path.exists(storage_state):
+            controller.set_status("正在加载保存的会话状态")
+            context = browser.new_context(storage_state=storage_state, no_viewport=True)
+        else:
+            controller.set_status("创建新的浏览器会话")
+            context = browser.new_context(no_viewport=True)
+
+        page = context.new_page()
+        controller.set_status("正在检查登录状态...")
+
+        try:
+            page.goto("https://www.dianxiaomi.com/")
+            if page.locator("text=立即登录").count() > 0:
+                raise Exception("Not logged in")
+        except Exception as e:
+            controller.set_status("需要登录，请在浏览器中完成登录")
+            print(f"🔐 需要登录: {e}")
+            page.get_by_role("textbox", name="请输入用户名").click()
+            page.get_by_role("textbox", name="请输入用户名").fill(user_name)
+            page.get_by_role("textbox", name="请输入密码").click()
+            page.get_by_role("textbox", name="请输入密码").fill(password)
+            wait_for_user_confirmation(
+                "请在浏览器中完成登录。完成后点击下方按钮继续。",
+                title="登录确认",
+                button_text="我已完成登录",
+                fallback_message="等待登录后按回车键继续\n",
+            )
+            controller.set_status("正在保存登录状态...")
+            page.context.storage_state(path=storage_state)
+            controller.set_status("✅ 登录成功，状态已保存")
+
+        controller.set_status("正在打开采集箱列表...")
+        page.goto("https://www.dianxiaomi.com/web/sheinProduct/draft")
+        controller.set_status("✅ 已导航到采集箱列表")
+        wait_for_user_confirmation(
+            "请在浏览器中手动筛选需要处理的列表项，准备好后点击继续。",
+            title="筛选确认",
+            button_text="筛选完成，继续",
+            fallback_message="请手动筛选列表后按回车键继续\n",
+        )
+
+        closeAdModal(page)
+
+        controller.set_status("完成筛选后，请点击控制面板上的“开始”按钮启动处理")
+        if not controller.wait_for_start("完成筛选后，请点击控制面板上的“开始”按钮开始处理"):
+            print("🛑 流程已在控制面板中取消")
+            return
+
+        summary = run_manual_mode(context, page, controller=controller)
+
+        total_handled = 0
+        total_tasks = 0
+        if summary:
+            total_handled = summary.get("processed", 0) + summary.get("skipped", 0) + summary.get("errors", 0)
+            total_tasks = summary.get("total", total_handled)
+            controller.update_progress(total_handled, total_tasks)
+
+            if summary.get("stopped_by_panel"):
+                controller.set_status("流程已通过控制面板停止")
+            elif summary.get("stopped_by_choice"):
+                controller.set_status("流程已根据用户选择结束")
+            else:
+                controller.set_status("所有产品处理完成")
+        else:
+            controller.set_status("流程已结束")
+
+        print("\n🏁 所有操作已完成，浏览器保持打开状态供您继续操作...")
+
+        if not controller.is_gui_available:
+            wait_for_user_confirmation(
+                "点击下方按钮即可退出程序并关闭浏览器。",
+                title="退出程序",
+                button_text="退出并关闭",
+                fallback_message="按Enter键退出程序并关闭浏览器...",
+            )
+    finally:
+        if context is not None:
+            context.close()
+        if browser is not None:
+            browser.close()
+        controller.close()
 
 
 def test_process_product_edit_enhanced():
