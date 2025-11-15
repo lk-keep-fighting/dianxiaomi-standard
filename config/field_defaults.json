@@ -1,0 +1,89 @@
+{
+  "description": "字段默认值配置 - 支持精确匹配、模式匹配和类型匹配",
+  "version": "1.0",
+  "updated": "2024-09-21",
+  
+  "defaults": {
+    "exact_match": {
+      "description": "精确字段名匹配的默认值",
+      "values": {
+        "Is Prop 65 Warning Required": "No (否)",
+        "Age Group": "Adult (成人)", 
+        "Condition": "New (全新)",
+        "Has Written Warranty": "No (否)",
+        "Net Content": "1",
+        "Recommended Locations": "Indoor",
+        "Small Parts Warning Code": "0 - No warning applicable",
+        "Country of Origin": "China",
+        "Manufacturer": "Unknown",
+        "Model Number": "N/A",
+        "UPC": "Does not apply",
+        "EAN": "Does not apply",
+        "Package Quantity": "1",
+        "Is Assembly Required": "Yes",
+        "Assembly Time": "30 minutes",
+        "Tools Required": "Basic tools required",
+        "Included Components": "All parts included",
+        "Care Instructions": "Clean with damp cloth",
+        "Indoor/Outdoor Usage": "Indoor",
+        "Seasonal Variant": "All Season",
+        "Holiday Theme": "None"
+      }
+    },
+    
+    "pattern_match": {
+      "description": "基于模式匹配的默认值（支持关键词匹配）",
+      "values": {
+        "*Brand*": "No Brand"
+      }
+    },
+    
+    "type_based": {
+      "description": "基于字段类型的默认值",
+      "values": {
+        "number": "0"
+      }
+    },
+    
+    "category_based": {
+      "description": "基于字段类别的默认值",
+      "values": {
+        "boolean": "No"
+      }
+    },
+    
+    "contextual_defaults": {
+      "description": "基于上下文的智能默认值",
+      "furniture": {
+        "Material": "Wood",
+        "Style": "Contemporary", 
+        "Room Type": "Living Room",
+        "Assembly Required": "Yes",
+        "Care Instructions": "Wipe clean with damp cloth"
+      },
+      "electronics": {
+        "Power Source": "Electric",
+        "Warranty": "1 Year",
+        "Certification": "CE Marked"
+      },
+      "clothing": {
+        "Material": "Cotton",
+        "Care Instructions": "Machine washable",
+        "Season": "All Season"
+      }
+    }
+  },
+  
+  "configuration": {
+    "priority_order": [
+      "exact_match",
+      "pattern_match", 
+      "contextual_defaults",
+      "category_based",
+      "type_based"
+    ],
+    "enable_logging": true,
+    "fallback_strategy": "empty_string",
+    "cache_defaults": true
+  }
+}

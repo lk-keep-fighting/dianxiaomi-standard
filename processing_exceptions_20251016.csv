@@ -1,0 +1,2 @@
+﻿时间,商品链接,商品标题,当前分类,操作步骤,异常类型,错误信息,处理状态,备注
+2025-10-16 14:30:07,未知链接,未知标题,未知分类,表单填充,TargetClosedError,"Page.wait_for_timeout: Target page, context or browser has been closed",待分析,
