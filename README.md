@@ -24,27 +24,32 @@
 
 ```
 数字酋长自动化-warp2/
-├── src/                                  # 核心源代码
-│   ├── main_refactored_dianxiaomi.py   # 店小秘入口主程序
-│   ├── amazon_product_parser.py         # 统一的Amazon产品解析器
-│   ├── product_data.py                  # 产品数据结构和映射引擎
-│   └── unified_form_filler.py           # 表单填充引擎
-├── config/                               # 运行时配置
+├── data/                               # 运行时数据与缓存
+│   └── auth_states/                    # 登录状态缓存（Playwright storage）
+├── scripts/                            # 启动与环境准备脚本
+│   ├── install_dependencies.sh
+│   ├── install_dependencies.bat
+│   ├── run.sh
+│   └── run.bat
+├── src/                                # 核心源代码
+│   ├── main.py                         # 店小秘入口主程序
+│   ├── main_refactored_dianxiaomi.py   # 兼容入口，提示升级到 main.py
+│   ├── amazon_product_parser.py        # 统一的Amazon产品解析器
+│   ├── product_data.py                 # 产品数据结构和映射引擎
+│   └── unified_form_filler.py          # 表单填充引擎
+├── config/                             # 运行时配置
 │   └── field_defaults.json
 ├── archive/
-│   ├── non_startup_assets/               # 归档的辅助资源
-│   │   ├── docs/                         # 文档与指南
-│   │   ├── scripts/                      # 辅助脚本
-│   │   ├── tests/                        # 测试脚本
-│   │   ├── packaging/                    # 打包相关文件
-│   │   └── data/                         # 历史数据与日志
-│   └── ...                               # 历史主程序等
-├── install_dependencies.sh               # Linux/macOS依赖安装
-├── install_dependencies.bat              # Windows依赖安装
-├── run.sh                                # Linux/macOS启动脚本
-├── run.bat                               # Windows启动脚本
-├── requirements.txt                      # Python依赖
-└── *_auth_state.json                     # 登录状态缓存
+│   ├── non_startup_assets/             # 归档的辅助资源
+│   │   ├── docs/
+│   │   ├── scripts/
+│   │   ├── tests/
+│   │   ├── packaging/
+│   │   └── data/
+│   └── ...                             # 历史主程序等
+├── requirements.txt                    # Python依赖
+├── README.md
+└── .env.example
 ```
 
 > 📦 与程序启动无关的文档、测试和打包脚本已统一归档到 `archive/non_startup_assets/` 目录，保持根目录专注于运行必需组件。
@@ -65,7 +70,7 @@ git clone <repository-url>
 cd 数字酋长自动化-warp2
 
 # 一键安装所有依赖
-./install_dependencies.sh
+./scripts/install_dependencies.sh
 
 # 或者手动安装
 pip install -r requirements.txt
@@ -76,10 +81,10 @@ python -m playwright install chromium
 
 ```bash
 # 方式1：使用便捷脚本
-./run.sh
+./scripts/run.sh
 
 # 方式2：直接运行主程序
-python src/main_refactored_dianxiaomi.py
+python src/main.py
 ```
 
 ### 测试系统
@@ -192,7 +197,7 @@ python src/test_amazon_parser.py
 python -m playwright install --with-deps chromium
 
 # 检查权限
-chmod +x install_dependencies.sh run.sh
+chmod +x scripts/install_dependencies.sh scripts/run.sh
 ```
 
 ## 📊 系统监控

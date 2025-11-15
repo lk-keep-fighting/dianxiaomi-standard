@@ -5,6 +5,10 @@
 
 set -e  # Exit on any error
 
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+PROJECT_ROOT="$(cd "${SCRIPT_DIR}/.." && pwd)"
+cd "${PROJECT_ROOT}"
+
 echo "=================================================="
 echo "  Digital Chief Automation - Dependency Installer"
 echo "=================================================="
@@ -132,15 +136,15 @@ show_usage() {
     echo ""
     echo "Next steps:"
     echo "1. Run the main application:"
-    echo "   ./run.sh              (Linux/macOS)"
-    echo "   run.bat               (Windows)"
-    echo "   python src/main_refactored_dianxiaomi.py    (Direct)"
+    echo "   ./scripts/run.sh           (Linux/macOS)"
+    echo "   scripts\\run.bat           (Windows)"
+    echo "   python src/main.py         (Direct)"
     echo ""
     echo "2. Run tests (archived utilities):"
     echo "   pytest archive/non_startup_assets/tests/"
     echo ""
     echo "3. For development with virtual environment:"
-    echo "   ./install_dependencies.sh --venv"
+    echo "   ./scripts/install_dependencies.sh --venv"
     echo ""
 }
 
