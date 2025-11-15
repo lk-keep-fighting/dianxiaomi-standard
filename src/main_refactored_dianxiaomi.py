@@ -22,7 +22,6 @@ import sys
 import time
 import datetime
 import csv
-from typing import Optional
 from playwright.sync_api import Page, Playwright, sync_playwright
 
 # 导入重构后的统一组件
@@ -31,7 +30,7 @@ from product_data import ProductData
 from unified_form_filler import UnifiedFormFiller
 from ai_category_validator import AICategoryValidator
 from csv_logger import write_unreasonable_category_to_csv, write_processing_exception_to_csv, csv_logger
-from ui_prompter import wait_for_user_confirmation
+from ui_prompter import wait_for_user_confirmation, prompt_user_choice, prompt_text_input
 
     
 # 登录信息
@@ -818,15 +817,26 @@ def show_product_preview_for_dianxiaomi(product_data: ProductData):
     print("\n" + "="*80)
     
     while True:
-        choice = input("🤔 请选择操作 [Y]继续填充 / [N]跳过 / [D]查看详情: ").strip().upper()
-        
-        if choice in ['Y', 'YES', '']:
+        choice = prompt_user_choice(
+            "请选择下一步操作：",
+            options=[
+                ("Y", "继续填充", ["YES"]),
+                ("N", "跳过", ["NO"]),
+                ("D", "查看详情", ["DETAIL", "DETAILS"]),
+            ],
+            title="产品信息审核",
+            default="Y",
+            fallback_prompt="🤔 请选择操作 [Y]继续填充 / [N]跳过 / [D]查看详情: ",
+            invalid_message="❌ 无效选择，请输入 Y/N/D",
+        )
+
+        if choice == "Y":
             print("✅ 用户确认，开始填充表单...")
             return True
-        elif choice in ['N', 'NO']:
+        elif choice == "N":
             print("⏭️ 用户跳过，不填充表单")
             return False
-        elif choice in ['D', 'DETAIL', 'DETAILS']:
+        elif choice == "D":
             # 显示完整详情
             print("\n" + "="*60)
             print("📋 完整产品详情")
@@ -835,8 +845,6 @@ def show_product_preview_for_dianxiaomi(product_data: ProductData):
                 print(f"{key:<30}: {value}")
             print("="*60)
             continue
-        else:
-            print("❌ 无效选择，请输入 Y/N/D")
 
 
 def fill_edit_form_enhanced(edit_page: Page, product_data: ProductData, manual_mode: bool = False) -> None:
@@ -1892,14 +1900,25 @@ def run_manual_mode(context, page):
         # 询问是否继续
         if i < count - 1:  # 不是最后一个产品
             print(f"\n📊 当前进度: 已处理 {processed}, 已跳过 {skipped}, 错误 {errors}")
-            if auto_mode==False:
-                continue_choice = input("🤔 继续下一个产品? [Y]是 / [N]结束 /[A] 自动继续不再询问: ").strip().upper()
-                if continue_choice in ['N', 'NO']:
+            if not auto_mode:
+                continue_choice = prompt_user_choice(
+                    "是否继续处理下一个产品？",
+                    options=[
+                        ("Y", "继续", ["YES"]),
+                        ("N", "结束", ["NO"]),
+                        ("A", "自动继续（不再询问）", ["AUTO"]),
+                    ],
+                    title="是否继续",
+                    default="Y",
+                    fallback_prompt="🤔 继续下一个产品? [Y]是 / [N]结束 /[A] 自动继续不再询问: ",
+                    invalid_message="❌ 无效选择，请输入 Y/N/A",
+                )
+                if continue_choice == "N":
                     print("🛑 用户选择结束处理")
                     break
-                elif continue_choice in ['A', 'AUTO']:
+                elif continue_choice == "A":
                     print("AUTO 用户选择自动继续不再询问")
-                    auto_mode=True
+                    auto_mode = True
         
         # Wait between operations
         page.wait_for_timeout(2000)
@@ -2070,8 +2089,13 @@ def test_process_product_edit_enhanced():
     print("🧪"*20)
     
     # 获取测试URL
-    test_url = input("\n📝 请输入编辑页面URL (例如: https://www.dianxiaomi.com/web/sheinProduct/productEdit?id=12345): ")
-    
+    test_url = prompt_text_input(
+        "请输入编辑页面URL（例如：https://www.dianxiaomi.com/web/sheinProduct/productEdit?id=12345）",
+        title="测试URL输入",
+        button_text="开始测试",
+        fallback_prompt="\n📝 请输入编辑页面URL (例如: https://www.dianxiaomi.com/web/sheinProduct/productEdit?id=12345): ",
+    ).strip()
+
     if not test_url or not test_url.startswith('https://www.dianxiaomi.com'):
         print("❌ 无效的URL，请输入有效的店小秘编辑页面URL")
         return
@@ -2181,7 +2205,12 @@ def test_process_product_edit_enhanced():
                 print("❌ 无效选择")
             
             # 保持页面打开供检查
-            input("\n🔍 测试完成，请检查页面结果。按回车键关闭浏览器...")
+            wait_for_user_confirmation(
+                "测试完成，请检查浏览器中的页面结果，准备好后点击下方按钮关闭浏览器。",
+                title="测试完成",
+                button_text="关闭浏览器",
+                fallback_message="\n🔍 测试完成，请检查页面结果。按回车键关闭浏览器...",
+            )
             
         except Exception as e:
             print(f"❌ 测试过程中出错: {e}")
