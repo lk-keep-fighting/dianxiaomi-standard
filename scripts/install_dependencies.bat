@@ -4,6 +4,9 @@ rem This script installs all required dependencies for the browser automation pr
 
 setlocal enabledelayedexpansion
 
+set SCRIPT_DIR=%~dp0
+cd /d "%SCRIPT_DIR%.."
+
 echo ==================================================
 echo   Digital Chief Automation - Dependency Installer
 echo ==================================================
@@ -165,15 +168,15 @@ echo 🚀 Installation completed successfully!
 echo.
 echo Next steps:
 echo 1. Run the main application:
-echo    run.bat               (Windows)
-echo    ./run.sh              (Linux/macOS)
-echo    python src/main_refactored_dianxiaomi.py    (Direct)
+echo    scripts\run.bat        (Windows)
+echo    ./scripts/run.sh       (Linux/macOS)
+echo    python src/main.py     (Direct)
 echo.
 echo 2. Run tests (archived utilities):
 echo    pytest archive/non_startup_assets/tests/
 echo.
 echo 3. For development with virtual environment:
-echo    install_dependencies.bat --venv
+echo    scripts\install_dependencies.bat --venv
 echo.
 
 pause
