@@ -1,1 +1,1 @@
-python ./src/main.py
+python ./src/main_refactored_dianxiaomi.py
