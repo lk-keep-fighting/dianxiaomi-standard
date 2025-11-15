@@ -31,6 +31,7 @@ from product_data import ProductData
 from unified_form_filler import UnifiedFormFiller
 from ai_category_validator import AICategoryValidator
 from csv_logger import write_unreasonable_category_to_csv, write_processing_exception_to_csv, csv_logger
+from ui_prompter import wait_for_user_confirmation
 
     
 # 登录信息
@@ -2022,14 +2023,24 @@ def run(playwright: Playwright) -> None:
         page.get_by_role("textbox", name="请输入用户名").fill(user_name)
         page.get_by_role("textbox", name="请输入密码").click()
         page.get_by_role("textbox", name="请输入密码").fill(password)
-        input("等待登录后按回车键继续\n")
+        wait_for_user_confirmation(
+            "请在浏览器中完成登录。完成后点击下方按钮继续。",
+            title="登录确认",
+            button_text="我已完成登录",
+            fallback_message="等待登录后按回车键继续\n",
+        )
         # Save authentication state
         page.context.storage_state(path=storage_state)
         print("✅ 登录成功，状态已保存")
     
     page.goto("https://www.dianxiaomi.com/web/sheinProduct/draft")
     print("✅ 已导航到采集箱列表")
-    input("请手动筛选列表后按回车键继续\n")
+    wait_for_user_confirmation(
+        "请在浏览器中手动筛选需要处理的列表项，准备好后点击继续。",
+        title="筛选确认",
+        button_text="筛选完成，继续",
+        fallback_message="请手动筛选列表后按回车键继续\n",
+    )
     
 
     closeAdModal(page)
@@ -2037,7 +2048,12 @@ def run(playwright: Playwright) -> None:
     
     # 清理资源
     print("\n🏁 所有操作已完成，浏览器保持打开状态供您继续操作...")
-    input("按Enter键退出程序并关闭浏览器...")
+    wait_for_user_confirmation(
+        "点击下方按钮即可退出程序并关闭浏览器。",
+        title="退出程序",
+        button_text="退出并关闭",
+        fallback_message="按Enter键退出程序并关闭浏览器...",
+    )
     context.close()
     browser.close()
 
@@ -2087,7 +2103,12 @@ def test_process_product_edit_enhanced():
             # 检查是否需要登录
             if edit_page.locator("text=立即登录").count() > 0 or edit_page.locator("input[placeholder*='用户名']").count() > 0:
                 print("🔐 需要登录，请在浏览器中完成登录")
-                input("登录完成后按回车键继续...")
+                wait_for_user_confirmation(
+                    "登录成功后点击下方按钮继续测试流程。",
+                    title="登录确认",
+                    button_text="登录完成，继续",
+                    fallback_message="登录完成后按回车键继续...",
+                )
                 
                 # 重新加载页面
                 edit_page.reload()
