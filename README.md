@@ -1,6 +1,6 @@
 # 数字酋长自动化系统 - 重构版
 
-[![Tests](https://img.shields.io/badge/tests-passing-green.svg)](test_refactored_system.py)
+[![Tests](https://img.shields.io/badge/tests-passing-green.svg)](archive/non_startup_assets/tests/test_refactored_system.py)
 [![Python](https://img.shields.io/badge/python-3.8%2B-blue.svg)](https://python.org)
 [![Playwright](https://img.shields.io/badge/playwright-latest-orange.svg)](https://playwright.dev)
 
@@ -24,23 +24,30 @@
 
 ```
 数字酋长自动化-warp2/
-├── src/                          # 核心源代码
-│   ├── product_data.py          # 统一的产品数据结构和映射引擎
-│   ├── amazon_product_parser.py # 统一的Amazon产品解析器
-│   ├── unified_form_filler.py   # 统一的表单填充引擎
-│   ├── main_refactored.py       # 重构后的主程序
-│   ├── system_config.py         # 统一的配置系统
-│   └── form-json-schema.json    # 表单字段Schema定义
-├── config/                       # 配置文件
-│   └── field_defaults.json     # 字段默认值配置
-├── archive/                      # 归档的过时文件
-│   └── obsolete_main/           # 过时的主程序文件
-├── auth_state.json              # 登录状态缓存
-├── install_dependencies.sh      # 依赖安装脚本
-├── run.sh                       # 快速启动脚本
-├── test_refactored_system.py    # 系统完整性测试
-└── README.md                    # 项目文档
+├── src/                                  # 核心源代码
+│   ├── main_refactored_dianxiaomi.py   # 店小秘入口主程序
+│   ├── amazon_product_parser.py         # 统一的Amazon产品解析器
+│   ├── product_data.py                  # 产品数据结构和映射引擎
+│   └── unified_form_filler.py           # 表单填充引擎
+├── config/                               # 运行时配置
+│   └── field_defaults.json
+├── archive/
+│   ├── non_startup_assets/               # 归档的辅助资源
+│   │   ├── docs/                         # 文档与指南
+│   │   ├── scripts/                      # 辅助脚本
+│   │   ├── tests/                        # 测试脚本
+│   │   ├── packaging/                    # 打包相关文件
+│   │   └── data/                         # 历史数据与日志
+│   └── ...                               # 历史主程序等
+├── install_dependencies.sh               # Linux/macOS依赖安装
+├── install_dependencies.bat              # Windows依赖安装
+├── run.sh                                # Linux/macOS启动脚本
+├── run.bat                               # Windows启动脚本
+├── requirements.txt                      # Python依赖
+└── *_auth_state.json                     # 登录状态缓存
 ```
+
+> 📦 与程序启动无关的文档、测试和打包脚本已统一归档到 `archive/non_startup_assets/` 目录，保持根目录专注于运行必需组件。
 
 ## 🚀 快速开始
 
@@ -72,17 +79,17 @@ python -m playwright install chromium
 ./run.sh
 
 # 方式2：直接运行主程序
-python src/main_refactored.py
+python src/main_refactored_dianxiaomi.py
 ```
 
 ### 测试系统
 
 ```bash
 # 运行完整性测试
-python test_refactored_system.py
+python archive/non_startup_assets/tests/test_refactored_system.py
 
 # 验证所有组件正常工作
-python -m pytest src/tests/ -v
+pytest archive/non_startup_assets/tests/ -v
 ```
 
 ## ⚙️ 核心组件
@@ -167,7 +174,7 @@ export ENVIRONMENT="development"
 python -c "from src.product_data import FIELD_MAPPING; print(FIELD_MAPPING.field_mappings)"
 
 # 运行映射测试
-python test_refactored_system.py
+python archive/non_startup_assets/tests/test_refactored_system.py
 ```
 
 **2. Amazon解析失败**
@@ -238,7 +245,7 @@ Amazon产品页面
 - **No Special Cases** - 消除边界条件
 
 ### 开发流程
-1. 运行测试: `python test_refactored_system.py`
+1. 运行测试: `python archive/non_startup_assets/tests/test_refactored_system.py`
 2. 修改代码
 3. 再次运行测试确保通过
 4. 提交更改
