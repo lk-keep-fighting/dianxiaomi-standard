@@ -50,6 +50,100 @@ AUTH_STATE_DIR = PROJECT_ROOT / "data" / "auth_states"
 AUTH_STATE_DIR.mkdir(parents=True, exist_ok=True)
 
 
+class UserInteractionFlow:
+    """统一的控制台用户界面，负责展示功能和收集确认信息。"""
+
+    def __init__(self) -> None:
+        self.section_divider = "═" * 72
+
+    def display_welcome_screen(self) -> None:
+        print("\n" + self.section_divider)
+        print("🌟 重构后的数字酋长自动化系统")
+        print(self.section_divider)
+        print("📋 功能总览:")
+        print("  • Amazon商品解析与数据标准化")
+        print("  • 店小秘表单智能填充")
+        print("  • 手动审核 / 自动批处理流程")
+        print(self.section_divider)
+
+    def _display_main_menu(self) -> None:
+        print("\n主操作菜单:")
+        print("  [1] 开始处理采集箱产品")
+        print("  [2] 打开测试工具")
+        print("  [3] 退出程序")
+
+    def prompt_main_action(self) -> str:
+        while True:
+            self._display_main_menu()
+            choice = input("请选择操作 [1-3]: ").strip().lower()
+            if choice == "":
+                choice = "1"
+            if choice in {"1", "start", "s"}:
+                return "start"
+            if choice in {"2", "test", "t"}:
+                return "test"
+            if choice in {"3", "exit", "e", "q", "quit"}:
+                return "exit"
+            print("❌ 无效的选择，请重新输入。")
+
+    def wait_for_confirmation(self, message: str) -> None:
+        input(f"{message.strip()}\n按回车继续...")
+
+    def notify(self, message: str) -> None:
+        print(message)
+
+    def prompt_manual_continue(self, processed: int, skipped: int, errors: int, remaining: int) -> str:
+        print(f"\n📊 当前进度: 已处理 {processed}, 已跳过 {skipped}, 错误 {errors}, 剩余 {remaining}")
+        while True:
+            choice = input("🤔 是否继续? [Y]是 / [N]结束 / [A] 自动继续: ").strip().upper()
+            if choice in {"", "Y", "YES"}:
+                return "continue"
+            if choice in {"N", "NO"}:
+                return "stop"
+            if choice in {"A", "AUTO"}:
+                print("⚙️ 已启用自动继续模式，不再提示确认。")
+                return "auto"
+            print("❌ 无效输入，请输入 Y/N/A。")
+
+    def prompt_product_preview_action(self) -> str:
+        while True:
+            choice = input("🤔 请选择操作 [Y]继续填充 / [N]跳过 / [D]查看详情: ").strip().upper()
+            if choice in {"", "Y", "YES"}:
+                return "continue"
+            if choice in {"N", "NO"}:
+                return "skip"
+            if choice in {"D", "DETAIL", "DETAILS"}:
+                return "detail"
+            print("❌ 无效选择，请输入 Y/N/D。")
+
+    def prompt_return_to_menu(self) -> bool:
+        choice = input("\n是否返回主菜单继续操作? [Y]是 / [N]否: ").strip().lower()
+        if choice in {"", "y", "yes"}:
+            return True
+        return False
+
+    def prompt_test_url(self) -> str:
+        return input("\n📝 请输入编辑页面URL (例如: https://www.dianxiaomi.com/web/sheinProduct/productEdit?id=12345): ").strip()
+
+    def prompt_test_mode(self) -> str:
+        print("\n测试模式:")
+        print("  [1] 完整流程测试 (解析 + 填充)")
+        print("  [2] 仅表单填充测试")
+        print("  [3] 仅Amazon解析测试")
+        print("  [4] 仅规格选择测试")
+        while True:
+            choice = input("请选择测试类型 [1-4]: ").strip()
+            if choice in {"1", "2", "3", "4"}:
+                return choice
+            print("❌ 无效的选择，请输入 1-4。")
+
+    def pause_for_review(self, message: str) -> None:
+        input(f"{message.strip()}\n检查完成后按回车继续...")
+
+    def say_goodbye(self) -> None:
+        print("\n感谢使用数字酋长自动化系统，期待再次见到您！")
+
+
 def check_script_expiration():
     """
     检查脚本有效期 - 保持原有的期限控制逻辑
@@ -810,7 +904,10 @@ def parse_amazon_product_enhanced(context, web_url):
         amazon_page.close()
         return None
 
-def show_product_preview_for_dianxiaomi(product_data: ProductData):
+def show_product_preview_for_dianxiaomi(
+    product_data: ProductData,
+    ui: Optional[UserInteractionFlow] = None,
+) -> bool:
     """
     显示产品信息预览，供用户审核 - 针对店小秘平台优化
     
@@ -823,25 +920,35 @@ def show_product_preview_for_dianxiaomi(product_data: ProductData):
     print("\n" + "="*80)
     
     while True:
-        choice = input("🤔 请选择操作 [Y]继续填充 / [N]跳过 / [D]查看详情: ").strip().upper()
+        if ui is not None:
+            decision = ui.prompt_product_preview_action()
+        else:
+            choice = input("🤔 请选择操作 [Y]继续填充 / [N]跳过 / [D]查看详情: ").strip().upper()
+            if choice in {"", "Y", "YES"}:
+                decision = "continue"
+            elif choice in {"N", "NO"}:
+                decision = "skip"
+            elif choice in {"D", "DETAIL", "DETAILS"}:
+                decision = "detail"
+            else:
+                print("❌ 无效选择，请输入 Y/N/D")
+                continue
         
-        if choice in ['Y', 'YES', '']:
+        if decision == "continue":
             print("✅ 用户确认，开始填充表单...")
             return True
-        elif choice in ['N', 'NO']:
+        if decision == "skip":
             print("⏭️ 用户跳过，不填充表单")
             return False
-        elif choice in ['D', 'DETAIL', 'DETAILS']:
-            # 显示完整详情
-            print("\n" + "="*60)
-            print("📋 完整产品详情")
-            print("="*60)
-            for key, value in product_data.to_dict().items():
-                print(f"{key:<30}: {value}")
-            print("="*60)
-            continue
-        else:
-            print("❌ 无效选择，请输入 Y/N/D")
+        
+        # 显示完整详情
+        print("\n" + "="*60)
+        print("📋 完整产品详情")
+        print("="*60)
+        for key, value in product_data.to_dict().items():
+            print(f"{key:<30}: {value}")
+        print("="*60)
+        # 循环继续，直到用户做出明确选择
 
 
 def fill_edit_form_enhanced(edit_page: Page, product_data: ProductData, manual_mode: bool = False) -> None:
@@ -1841,7 +1948,7 @@ def process_product_edit_enhanced(context, edit_page: Page, manual_mode: bool = 
         return False
 
 
-def run_manual_mode(context, page):
+def run_manual_mode(context, page, ui: UserInteractionFlow):
     """手动审核模式 - 逐个产品审核，可切换自动模式"""
     print("\n" + "🔍"*20)
     print("🎯 店小秘手动审核模式")
@@ -1896,15 +2003,16 @@ def run_manual_mode(context, page):
         
         # 询问是否继续
         if i < count - 1:  # 不是最后一个产品
-            print(f"\n📊 当前进度: 已处理 {processed}, 已跳过 {skipped}, 错误 {errors}")
-            if auto_mode==False:
-                continue_choice = input("🤔 继续下一个产品? [Y]是 / [N]结束 /[A] 自动继续不再询问: ").strip().upper()
-                if continue_choice in ['N', 'NO']:
-                    print("🛑 用户选择结束处理")
+            remaining = count - i - 1
+            if auto_mode:
+                ui.notify(f"\n⚙️ 自动继续模式已开启，剩余 {remaining} 个产品将自动处理...")
+            else:
+                decision = ui.prompt_manual_continue(processed, skipped, errors, remaining)
+                if decision == "stop":
+                    ui.notify("🛑 用户选择结束处理")
                     break
-                elif continue_choice in ['A', 'AUTO']:
-                    print("AUTO 用户选择自动继续不再询问")
-                    auto_mode=True
+                if decision == "auto":
+                    auto_mode = True
         
         # Wait between operations
         page.wait_for_timeout(2000)
@@ -1997,7 +2105,7 @@ def closeAdModal(page: Page):
         
     
      
-def run(playwright: Playwright) -> None:
+def run(playwright: Playwright, ui: UserInteractionFlow) -> None:
     """
     主运行函数 - 保持原有的登录和会话管理逻辑
     """
@@ -2023,32 +2131,32 @@ def run(playwright: Playwright) -> None:
             raise Exception("Not logged in")
     except Exception as e:
         # 需要登录
-        print(f"🔐 需要登录: {e}")
+        ui.notify(f"🔐 需要登录: {e}")
         page.get_by_role("textbox", name="请输入用户名").click()
         page.get_by_role("textbox", name="请输入用户名").fill(user_name)
         page.get_by_role("textbox", name="请输入密码").click()
         page.get_by_role("textbox", name="请输入密码").fill(password)
-        input("等待登录后按回车键继续\n")
+        ui.wait_for_confirmation("请在浏览器窗口完成登录后继续。")
         # Save authentication state
         page.context.storage_state(path=str(storage_state_path))
-        print("✅ 登录成功，状态已保存")
+        ui.notify("✅ 登录成功，状态已保存")
     
     page.goto("https://www.dianxiaomi.com/web/sheinProduct/draft")
     print("✅ 已导航到采集箱列表")
-    input("请手动筛选列表后按回车键继续\n")
+    ui.wait_for_confirmation("请在店小秘采集箱页面完成筛选后继续。")
     
 
     closeAdModal(page)
-    run_manual_mode(context, page)
+    run_manual_mode(context, page, ui)
     
     # 清理资源
     print("\n🏁 所有操作已完成，浏览器保持打开状态供您继续操作...")
-    input("按Enter键退出程序并关闭浏览器...")
+    ui.wait_for_confirmation("按回车退出程序并关闭浏览器。")
     context.close()
     browser.close()
 
 
-def test_process_product_edit_enhanced():
+def test_process_product_edit_enhanced(ui: UserInteractionFlow):
     """
     测试用例：直接输入edit_page的URL来测试process_product_edit_enhanced函数
     
@@ -2060,7 +2168,7 @@ def test_process_product_edit_enhanced():
     print("🧪"*20)
     
     # 获取测试URL
-    test_url = input("\n📝 请输入编辑页面URL (例如: https://www.dianxiaomi.com/web/sheinProduct/productEdit?id=12345): ")
+    test_url = ui.prompt_test_url()
     
     if not test_url or not test_url.startswith('https://www.dianxiaomi.com'):
         print("❌ 无效的URL，请输入有效的店小秘编辑页面URL")
@@ -2092,8 +2200,8 @@ def test_process_product_edit_enhanced():
             
             # 检查是否需要登录
             if edit_page.locator("text=立即登录").count() > 0 or edit_page.locator("input[placeholder*='用户名']").count() > 0:
-                print("🔐 需要登录，请在浏览器中完成登录")
-                input("登录完成后按回车键继续...")
+                ui.notify("🔐 需要登录，请在浏览器中完成登录")
+                ui.wait_for_confirmation("登录完成后按回车继续。")
                 
                 # 重新加载页面
                 edit_page.reload()
@@ -2111,14 +2219,7 @@ def test_process_product_edit_enhanced():
                 return
             
             # 显示测试选项
-            print("\n📋 测试选项:")
-            print("[1] 完整流程测试 (解析Amazon + 填充表单)")
-            print("[2] 仅填充表单测试 (使用模拟数据)")
-            print("[3] 仅解析Amazon产品")
-            print("[4] 仅规格选择测试")
-            
-            # choice = input("\n请选择测试类型 [1-4]: ").strip()
-            choice = "1"
+            choice = ui.prompt_test_mode()
             
             if choice == "1":
                 # 完整流程测试
@@ -2166,7 +2267,7 @@ def test_process_product_edit_enhanced():
                 print("❌ 无效选择")
             
             # 保持页面打开供检查
-            input("\n🔍 测试完成，请检查页面结果。按回车键关闭浏览器...")
+            ui.pause_for_review("🔍 测试完成，请检查页面结果。")
             
         except Exception as e:
             print(f"❌ 测试过程中出错: {e}")
@@ -2219,27 +2320,40 @@ def main():
     """程序入口点"""
     import sys
     
+    global run_model
+    ui = UserInteractionFlow()
+    
     # 检查是否是测试模式
     if len(sys.argv) > 1 and sys.argv[1] == "--test":
-        run_model='test'
-        test_process_product_edit_enhanced()
+        run_model = 'test'
+        test_process_product_edit_enhanced(ui)
         return
     
-    print("🌟 重构后的数字酋长自动化系统")
-    print("📋 重构成果:")
-    print("   ✅ 统一Amazon解析器")
-    print("   ✅ 统一表单填充引擎")  
-    print("   ✅ 单一映射系统")
-    print("   ✅ 简化的数据流")
-    print("   ✅ 动态规格选择功能")
-    print()
-    print("💡 使用说明:")
-    print("   - 正常模式: python src/main.py")
-    print("   - 测试模式: python src/main.py --test")
-    print()
+    ui.display_welcome_screen()
+    while True:
+        action = ui.prompt_main_action()
+        if action == "start":
+            run_model = "default"
+            ui.notify("\n🚀 准备启动采集箱处理流程...")
+            try:
+                with sync_playwright() as playwright:
+                    run(playwright, ui)
+            except Exception as exc:
+                ui.notify(f"❌ 运行过程中出现异常: {exc}")
+            if not ui.prompt_return_to_menu():
+                break
+            ui.display_welcome_screen()
+        elif action == "test":
+            run_model = "test"
+            test_process_product_edit_enhanced(ui)
+            run_model = "default"
+            if not ui.prompt_return_to_menu():
+                break
+            ui.display_welcome_screen()
+        else:  # exit
+            break
     
-    with sync_playwright() as playwright:
-        run(playwright)
+    ui.say_goodbye()
 
 
 if __name__ == "__main__":
