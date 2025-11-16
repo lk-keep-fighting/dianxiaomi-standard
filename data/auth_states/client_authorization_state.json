@@ -1,0 +1,13 @@
+{
+  "username": "admin",
+  "status": "active",
+  "expires_at": "2025-11-17T13:32:15+00:00",
+  "validated_at": "2025-11-16T13:32:53.158344+00:00",
+  "metadata": {
+    "id": "4e628c59-1757-4178-92df-5b7fa8399969",
+    "username": "admin",
+    "status": "1",
+    "expires_at": "2025-11-17T13:32:15+00:00",
+    "updated_at": "2025-11-16T13:32:40.87101+00:00"
+  }
+}

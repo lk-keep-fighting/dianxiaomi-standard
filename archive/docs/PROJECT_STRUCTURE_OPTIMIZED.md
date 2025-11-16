@@ -7,7 +7,7 @@
 ## 📁 当前项目结构
 
 ```
-数字酋长自动化-warp2/
+店小秘自动化-warp2/
 ├── 🔥 amazon_toolkit.py              # 【核心】独立Amazon解析工具包
 ├── 📋 AMAZON_TOOLKIT_USAGE.md        # Amazon工具包使用指南
 ├── 🧪 test_amazon_toolkit.py         # Amazon工具包测试
@@ -33,7 +33,7 @@
 
 ### 2. 向后兼容性 ✅
 - 保留原有 `src/main_refactored.py` 功能
-- 现有数字酋长自动化流程不受影响
+- 现有店小秘自动化流程不受影响
 - 所有原有测试继续有效
 
 ### 3. 架构设计保留 📐

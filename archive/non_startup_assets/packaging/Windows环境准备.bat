@@ -1,9 +1,9 @@
 @echo off
 chcp 65001 >nul
-title 数字酋长自动化工具 - Windows环境准备
+title 店小秘自动化工具 - Windows环境准备
 
 echo ==========================================
-echo   数字酋长自动化工具 - Windows环境准备
+echo   店小秘自动化工具 - Windows环境准备
 echo ==========================================
 echo.
 

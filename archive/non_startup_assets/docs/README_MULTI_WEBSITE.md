@@ -1,4 +1,4 @@
-# 数字酋长自动化系统 - 多网站架构版
+# 店小秘自动化系统 - 多网站架构版
 
 [![Tests](https://img.shields.io/badge/tests-passing-green.svg)](test_multi_website_architecture.py)
 [![Python](https://img.shields.io/badge/python-3.8%2B-blue.svg)](https://python.org)
@@ -51,7 +51,7 @@ src/
 │   ├── base/                       # 抽象基类
 │   │   ├── website_strategy.py     # 网站策略基类
 │   │   └── form_filler_base.py     # 表单填充基类
-│   └── datacaciques/              # 数字酋长实现
+│   └── datacaciques/              # 店小秘实现
 │       ├── datacaciques_strategy.py
 │       └── datacaciques_form_filler.py
 ├── automation_engine.py           # 统一自动化引擎
@@ -74,7 +74,7 @@ python -m playwright install
 ### 配置环境
 
 ```bash
-# 数字酋长网站认证
+# 店小秘网站认证
 export DATACACIQUES_USERNAME="your_username"
 export DATACACIQUES_PASSWORD="your_password"
 
@@ -132,7 +132,7 @@ with sync_playwright() as playwright:
 ### 方式2: 向后兼容模式
 
 ```bash
-# 运行原有的数字酋长模式（完全向后兼容）
+# 运行原有的店小秘模式（完全向后兼容）
 python src/main_refactored.py
 ```
 
@@ -306,7 +306,7 @@ python -c "from automation_engine import AUTOMATION_ENGINE; AUTOMATION_ENGINE.pr
 
 - **v3.0** (2024-09-23): 多网站架构版本，支持策略模式扩展
 - **v2.0** (2024-09-22): 重构版本，统一映射系统和架构优化
-- **v1.0** (2024-09-20): 初始版本，支持数字酋长网站
+- **v1.0** (2024-09-20): 初始版本，支持店小秘网站
 
 ## 📞 技术支持
 

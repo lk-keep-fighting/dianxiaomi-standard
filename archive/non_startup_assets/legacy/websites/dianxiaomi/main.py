@@ -342,7 +342,7 @@ class FormFiller:
     def _get_form_container(self):
         """获取表单容器 - 根据目标网站修改选择器"""
         try:
-            # 示例：数字酋长的iframe结构
+            # 示例：店小秘的iframe结构
             main_frame = self.page.locator('iframe[name="iframeModal_flag_0"]').content_frame
             edit_frame = main_frame.locator('iframe[name^="iframeModal_editPostTemplet"]').content_frame
             return edit_frame

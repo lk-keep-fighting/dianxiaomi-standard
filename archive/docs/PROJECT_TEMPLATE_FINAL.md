@@ -7,7 +7,7 @@
 ## 📁 最终项目结构
 
 ```
-数字酋长自动化-warp2/
+店小秘自动化-warp2/
 ├── 🔥 template_main.py         # 【核心模板文件】- 复制此文件即可开始新项目
 ├── 📋 TEMPLATE_GUIDE.md        # 模板使用指南
 ├── ✅ src/main_refactored.py   # 原版本（保留兼容）

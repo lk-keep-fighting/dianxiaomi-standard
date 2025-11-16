@@ -2,14 +2,14 @@
 
 ## 🎯 设计目标
 
-**核心需求**: 基于现有数字酋长自动化系统，设计支持多个目标网站的表单填充架构，实现"一套Amazon抓取，多站点填充"。
+**核心需求**: 基于现有店小秘自动化系统，设计支持多个目标网站的表单填充架构，实现"一套Amazon抓取，多站点填充"。
 
 ## 🏗️ 架构设计原则
 
 ### Linus式设计哲学
 1. **Single Source of Truth** - Amazon解析器保持唯一
 2. **No Special Cases** - 用Strategy Pattern消除网站特定分支
-3. **Never Break Userspace** - 现有数字酋长功能完全兼容
+3. **Never Break Userspace** - 现有店小秘功能完全兼容
 
 ## 📋 架构方案
 
@@ -24,7 +24,7 @@
                        │                                  ▼                                  │
             ┌─────────────────────┐              ┌─────────────────────┐              ┌─────────────────────┐
             │ DataCaciquesStrategy│              │  WalmartStrategy    │              │   EbayStrategy      │
-            │ (数字酋长-现有)     │              │   (沃尔玛-新)       │              │   (eBay-新)         │
+            │ (店小秘-现有)     │              │   (沃尔玛-新)       │              │   (eBay-新)         │
             └─────────────────────┘              └─────────────────────┘              └─────────────────────┘
 ```
 
@@ -39,7 +39,7 @@ src/
 │   ├── base/
 │   │   ├── website_strategy.py     # 网站策略抽象基类
 │   │   └── form_filler_base.py     # 表单填充基类
-│   ├── datacaciques/              # 数字酋长实现
+│   ├── datacaciques/              # 店小秘实现
 │   │   ├── datacaciques_strategy.py
 │   │   ├── datacaciques_config.py
 │   │   └── datacaciques_form_filler.py
@@ -107,7 +107,7 @@ from .datacaciques_form_filler import DataCaciquesFormFiller
 from .datacaciques_config import DataCaciquesConfig
 
 class DataCaciquesStrategy(WebsiteStrategy):
-    """数字酋长网站策略 - 基于现有实现"""
+    """店小秘网站策略 - 基于现有实现"""
     
     def __init__(self):
         self.config = DataCaciquesConfig()
@@ -117,8 +117,8 @@ class DataCaciquesStrategy(WebsiteStrategy):
         return "DataCaciques"
     
     def validate_environment(self, page: Page) -> bool:
-        # 检查是否在数字酋长环境
-        return "datacaciques" in page.url or "数字酋长" in page.title()
+        # 检查是否在店小秘环境
+        return "datacaciques" in page.url or "店小秘" in page.title()
     
     def authenticate(self, page: Page, context: BrowserContext) -> bool:
         # 使用现有的登录逻辑
@@ -243,7 +243,7 @@ if __name__ == "__main__":
 
 ### 第二步：逐步重构
 1. 创建基类和抽象接口
-2. 将数字酋长逻辑包装为Strategy实现
+2. 将店小秘逻辑包装为Strategy实现
 3. 创建AutomationEngine统一调度
 
 ### 第三步：扩展新网站
@@ -272,7 +272,7 @@ if __name__ == "__main__":
 
 ### Phase 1 (立即实施)
 1. ✅ 创建抽象基类和接口
-2. ✅ 重构数字酋长为Strategy实现
+2. ✅ 重构店小秘为Strategy实现
 3. ✅ 创建AutomationEngine引擎
 
 ### Phase 2 (扩展阶段)
