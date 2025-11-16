@@ -12,6 +12,9 @@
 设计原则: Good Taste, No Duplication, Simple Data Flow
 """
 
+# Playwright 浏览器路径辅助 - 必须在其他导入之前
+import playwright_helper
+
 import os
 from socket import timeout
 from timeit import Timer
@@ -2321,10 +2324,18 @@ def main():
     import sys
 
     ensure_client_authorized()
-    
+
+    # 检查 Playwright 浏览器是否已安装（仅在打包环境中）
+    browsers_ok, error_msg = playwright_helper.ensure_browsers_installed()
+    if not browsers_ok:
+        print(error_msg)
+        print("\n按任意键退出...")
+        input()
+        sys.exit(1)
+
     global run_model
     ui = UserInteractionFlow()
-    
+
     # 检查是否是测试模式
     if len(sys.argv) > 1 and sys.argv[1] == "--test":
         run_model = 'test'
