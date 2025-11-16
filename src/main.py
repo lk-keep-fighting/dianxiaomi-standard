@@ -40,6 +40,9 @@ from auth_client import AuthClient, AuthStateStore, AuthError, AuthNetworkError,
 run_model = "default"
 user_name: str = ""
 password: str = ""
+client_access_token: Optional[str] = None
+client_account_status: str = "unknown"
+client_token_expiry: Optional[datetime.datetime] = None
 CLIENT_VERSION = os.getenv("CLIENT_VERSION", "1.0.0")
 
 # 路径配置
@@ -106,6 +109,32 @@ class UserInteractionFlow:
 
         while True:
             password = getpass("请输入授权密码: ").strip()
+            if password:
+                break
+            print("❌ 密码不能为空，请重新输入。")
+
+        return username, password
+
+    def prompt_browser_credentials(self, preset_username: Optional[str] = None) -> tuple[str, str]:
+        print("\n" + self.section_divider)
+        print("🧑‍💼 店小秘账户登录")
+        print(self.section_divider)
+
+        if preset_username:
+            username_prompt = f"请输入店小秘用户名 [{preset_username}]: "
+        else:
+            username_prompt = "请输入店小秘用户名: "
+
+        while True:
+            username = input(username_prompt).strip()
+            if not username and preset_username:
+                username = preset_username
+            if username:
+                break
+            print("❌ 用户名不能为空，请重新输入。")
+
+        while True:
+            password = getpass("请输入店小秘密码: ").strip()
             if password:
                 break
             print("❌ 密码不能为空，请重新输入。")
@@ -221,6 +250,7 @@ class ClientAuthenticator:
             "password": password,
             "access_token": state.access_token,
             "expires_at": state.expires_at.isoformat(),
+            "account_status": state.account_status,
         }
 
     def shutdown(self) -> None:
@@ -247,12 +277,10 @@ class ClientAuthenticator:
         env_username = (
             os.getenv("CLIENT_AUTH_USERNAME")
             or os.getenv("AUTH_USERNAME")
-            or os.getenv("DC_USERNAME")
         )
         env_password = (
             os.getenv("CLIENT_AUTH_PASSWORD")
             or os.getenv("AUTH_PASSWORD")
-            or os.getenv("DC_PASSWORD")
         )
 
         if env_username and env_password:
@@ -301,6 +329,59 @@ class ClientAuthenticator:
         except ValueError:
             return default
         return max(1, parsed)
+
+
+def _first_env_value(keys: list[str]) -> Optional[str]:
+    for key in keys:
+        value = os.getenv(key)
+        if value:
+            return value
+    return None
+
+
+def resolve_automation_credentials(ui: UserInteractionFlow) -> None:
+    global user_name, password
+
+    username_keys = [
+        "DXM_USERNAME",
+        "DIANXIAOMI_USERNAME",
+        "DC_USERNAME",
+    ]
+    password_keys = [
+        "DXM_PASSWORD",
+        "DIANXIAOMI_PASSWORD",
+        "DC_PASSWORD",
+    ]
+
+    env_username = _first_env_value(username_keys)
+    env_password = _first_env_value(password_keys)
+
+    env_username = env_username.strip() if env_username else ""
+    env_password = env_password.strip() if env_password else ""
+
+    if env_username and env_password:
+        user_name = env_username
+        password = env_password
+        masked = ClientAuthenticator._mask_username(user_name)
+        ui.notify(f"🔑 使用环境变量中的店小秘登录信息 ({masked}).")
+        return
+
+    if env_username and not env_password:
+        ui.notify("ℹ️ 环境变量已提供店小秘用户名，请输入密码完成登录。")
+    elif env_password and not env_username:
+        ui.notify("ℹ️ 环境变量仅提供了店小秘密码，请输入完整的账户信息。")
+        env_password = ""  # 避免误用
+
+    preset_username = env_username or None
+    input_username, input_password = ui.prompt_browser_credentials(preset_username=preset_username)
+    user_name = input_username.strip()
+    password = input_password.strip()
+
+    if not user_name or not password:
+        raise SystemExit("未提供完整的店小秘登录凭证，程序无法继续。")
+
+    masked = ClientAuthenticator._mask_username(user_name)
+    ui.notify(f"🔑 店小秘账号 {masked} 已就绪。")
 
 
 def _sanitize_username_for_storage(username: str) -> str:
@@ -2489,7 +2570,7 @@ def main():
     """程序入口点"""
     import sys
 
-    global run_model, user_name, password
+    global run_model, user_name, password, client_access_token, client_account_status, client_token_expiry
 
     ui = UserInteractionFlow()
     authenticator = ClientAuthenticator(ui)
@@ -2500,8 +2581,18 @@ def main():
         authenticator.shutdown()
         return
 
-    user_name = auth_context["username"]
-    password = auth_context["password"]
+    client_access_token = auth_context.get("access_token")
+    client_account_status = auth_context.get("account_status", "unknown")
+    expiry_text = auth_context.get("expires_at")
+    if expiry_text:
+        try:
+            client_token_expiry = datetime.datetime.fromisoformat(expiry_text.replace("Z", "+00:00"))
+        except ValueError:
+            client_token_expiry = None
+    else:
+        client_token_expiry = None
+
+    resolve_automation_credentials(ui)
 
     try:
         if len(sys.argv) > 1 and sys.argv[1] == "--test":
