@@ -32,6 +32,7 @@ from product_data import ProductData
 from unified_form_filler import UnifiedFormFiller
 from ai_category_validator import AICategoryValidator
 from csv_logger import write_unreasonable_category_to_csv, write_processing_exception_to_csv, csv_logger
+from client_authorization import ensure_client_authorized
 
     
 # 登录信息
@@ -2319,6 +2320,8 @@ def create_test_product_data():
 def main():
     """程序入口点"""
     import sys
+
+    ensure_client_authorized()
     
     global run_model
     ui = UserInteractionFlow()
