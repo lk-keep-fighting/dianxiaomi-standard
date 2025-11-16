@@ -1,0 +1,2 @@
+# Additional dependencies required to build the Windows executable
+pyinstaller>=6.4

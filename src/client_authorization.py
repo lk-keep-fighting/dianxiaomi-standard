@@ -9,7 +9,6 @@ promptly while avoiding unnecessary network calls on every launch.
 from __future__ import annotations
 
 import json
-import os
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
 from getpass import getpass
@@ -17,6 +16,11 @@ from pathlib import Path
 from typing import Any, Dict, Optional
 
 import requests
+
+try:  # pragma: no cover - runtime fallback when packaged differently
+    from runtime_env import get_env
+except ImportError:  # pragma: no cover
+    from .runtime_env import get_env  # type: ignore
 
 try:  # pragma: no cover - lazy optional import
     import bcrypt  # type: ignore
@@ -82,11 +86,11 @@ class ClientAuthorizationManager:
 
         self.supabase_url = self._require_env("SUPABASE_URL")
         self.supabase_api_key = self._require_env("SUPABASE_API_KEY")
-        self.supabase_table = os.getenv("SUPABASE_CLIENT_TABLE", "client_licenses")
-        self.username_column = os.getenv("SUPABASE_USERNAME_COLUMN", "username")
-        self.password_column = os.getenv("SUPABASE_PASSWORD_COLUMN", "password_hash")
-        self.status_column = os.getenv("SUPABASE_STATUS_COLUMN", "status")
-        self.expires_column = os.getenv("SUPABASE_EXPIRES_COLUMN", "expires_at")
+        self.supabase_table = get_env("SUPABASE_CLIENT_TABLE", "client_licenses") or "client_licenses"
+        self.username_column = get_env("SUPABASE_USERNAME_COLUMN", "username") or "username"
+        self.password_column = get_env("SUPABASE_PASSWORD_COLUMN", "password_hash") or "password_hash"
+        self.status_column = get_env("SUPABASE_STATUS_COLUMN", "status") or "status"
+        self.expires_column = get_env("SUPABASE_EXPIRES_COLUMN", "expires_at") or "expires_at"
 
     # ------------------------------------------------------------------
     # Public API
@@ -101,7 +105,7 @@ class ClientAuthorizationManager:
         """
 
         cached_state = self._load_state()
-        env_username = os.getenv("CLIENT_AUTH_USERNAME")
+        env_username = get_env("CLIENT_AUTH_USERNAME")
         if cached_state and env_username and env_username != cached_state.username:
             cached_state = None
 
@@ -153,8 +157,8 @@ class ClientAuthorizationManager:
     def _collect_credentials(
         self, cached_state: Optional[AuthorizationState]
     ) -> Credentials:
-        env_username = os.getenv("CLIENT_AUTH_USERNAME", "").strip()
-        env_password = os.getenv("CLIENT_AUTH_PASSWORD", "")
+        env_username = (get_env("CLIENT_AUTH_USERNAME") or "").strip()
+        env_password = get_env("CLIENT_AUTH_PASSWORD", "") or ""
 
         username: str
         if env_username:
@@ -270,7 +274,7 @@ class ClientAuthorizationManager:
 
     @staticmethod
     def _require_env(name: str) -> str:
-        value = os.getenv(name)
+        value = get_env(name)
         if not value:
             raise ClientAuthorizationError(f"缺少必要的环境变量 {name}。")
         return value
