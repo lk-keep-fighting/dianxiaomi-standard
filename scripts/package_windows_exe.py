@@ -144,6 +144,8 @@ def build_executable(args: argparse.Namespace, env_values: Dict[str, str]) -> No
         "playwright.sync_api._generated",
         "--collect-all",
         "playwright",
+        "--paths",
+        str(SRC_DIR),
     ]
     command.extend(resolve_add_data_args())
     command.append(str(SRC_DIR / "main.py"))
