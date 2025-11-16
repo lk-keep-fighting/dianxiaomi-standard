@@ -24,6 +24,7 @@ import datetime
 import csv
 from pathlib import Path
 from typing import Optional
+from getpass import getpass
 from playwright.sync_api import Page, Playwright, sync_playwright
 
 # 导入重构后的统一组件
@@ -32,22 +33,21 @@ from product_data import ProductData
 from unified_form_filler import UnifiedFormFiller
 from ai_category_validator import AICategoryValidator
 from csv_logger import write_unreasonable_category_to_csv, write_processing_exception_to_csv, csv_logger
+from auth_client import AuthClient, AuthStateStore, AuthError, AuthNetworkError, AuthRevokedError
 
-    
-# 登录信息
-# user_name = "liyoutest001"
-user_name = "getongtong2025"
-password = "Aa741852963."
-run_model="default"
-# # 备用登录信息
-# user_name = "18256261013"
-# password = "Aa741852963"
+
+# 授权 & 登录状态
+run_model = "default"
+user_name: str = ""
+password: str = ""
+CLIENT_VERSION = os.getenv("CLIENT_VERSION", "1.0.0")
 
 # 路径配置
 BASE_DIR = Path(__file__).resolve().parent
 PROJECT_ROOT = BASE_DIR.parent
 AUTH_STATE_DIR = PROJECT_ROOT / "data" / "auth_states"
 AUTH_STATE_DIR.mkdir(parents=True, exist_ok=True)
+CLIENT_AUTH_STATE_FILE = AUTH_STATE_DIR / "client_session.enc"
 
 
 class UserInteractionFlow:
@@ -85,6 +85,32 @@ class UserInteractionFlow:
             if choice in {"3", "exit", "e", "q", "quit"}:
                 return "exit"
             print("❌ 无效的选择，请重新输入。")
+
+    def prompt_client_credentials(self, preset_username: Optional[str] = None) -> tuple[str, str]:
+        print("\n" + self.section_divider)
+        print("🔐 授权登录")
+        print(self.section_divider)
+
+        if preset_username:
+            username_prompt = f"请输入授权用户名 [{preset_username}]: "
+        else:
+            username_prompt = "请输入授权用户名: "
+
+        while True:
+            username = input(username_prompt).strip()
+            if not username and preset_username:
+                username = preset_username
+            if username:
+                break
+            print("❌ 用户名不能为空，请重新输入。")
+
+        while True:
+            password = getpass("请输入授权密码: ").strip()
+            if password:
+                break
+            print("❌ 密码不能为空，请重新输入。")
+
+        return username, password
 
     def wait_for_confirmation(self, message: str) -> None:
         input(f"{message.strip()}\n按回车继续...")
@@ -142,6 +168,145 @@ class UserInteractionFlow:
 
     def say_goodbye(self) -> None:
         print("\n感谢使用数字酋长自动化系统，期待再次见到您！")
+
+
+class ClientAuthenticator:
+    """Handle client authorization against the external auth service."""
+
+    def __init__(self, ui: UserInteractionFlow) -> None:
+        self.ui = ui
+        self.state_store = AuthStateStore(CLIENT_AUTH_STATE_FILE)
+        self.service_url = self._resolve_service_url()
+        self.client = AuthClient(
+            base_url=self.service_url,
+            state_store=self.state_store,
+            client_version=CLIENT_VERSION,
+            status_interval=self._get_env_int("CLIENT_AUTH_HEARTBEAT_SECONDS", 900),
+            max_status_failures=self._get_env_int("CLIENT_AUTH_MAX_FAILURES", 3),
+            retry_delay=self._get_env_int("CLIENT_AUTH_RETRY_SECONDS", 10),
+            request_timeout=self._get_env_int("CLIENT_AUTH_TIMEOUT", 10),
+        )
+        self.monitor = None
+
+    def authenticate(self) -> dict:
+        username, password = self._resolve_credentials()
+        masked_username = self._mask_username(username)
+        self.ui.notify(f"\n🔐 正在验证授权账号 {masked_username} ...")
+
+        try:
+            state = self.client.login(username, password)
+        except AuthNetworkError as exc:
+            self.ui.notify(f"❌ 授权服务暂不可用: {exc}")
+            raise SystemExit(1)
+        except AuthError as exc:
+            self.ui.notify(f"❌ 授权失败: {exc}")
+            raise SystemExit(1)
+
+        expiry = self.client.get_local_expiry()
+        if expiry:
+            expiry_text = expiry.astimezone().strftime("%Y-%m-%d %H:%M:%S %Z")
+            self.ui.notify(f"✅ 授权成功，有效期至 {expiry_text}")
+        else:
+            self.ui.notify("✅ 授权成功")
+        if self.client.message:
+            self.ui.notify(f"ℹ️ {self.client.message}")
+
+        self.monitor = self.client.start_status_monitor(
+            on_revoked=self._on_revoked,
+            on_warning=self._on_warning,
+        )
+
+        return {
+            "username": username,
+            "password": password,
+            "access_token": state.access_token,
+            "expires_at": state.expires_at.isoformat(),
+        }
+
+    def shutdown(self) -> None:
+        if self.monitor:
+            self.monitor.stop()
+            self.monitor = None
+        try:
+            self.client.session.close()
+        except Exception:
+            pass
+
+    def _resolve_service_url(self) -> str:
+        env_url = (
+            os.getenv("CLIENT_AUTH_BASE_URL")
+            or os.getenv("AUTH_SERVICE_BASE_URL")
+        )
+        if env_url:
+            return env_url.rstrip("/")
+        default_url = "https://auth.datacaciques.com"
+        self.ui.notify(f"ℹ️ 未设置授权服务地址，使用默认: {default_url}")
+        return default_url
+
+    def _resolve_credentials(self) -> tuple[str, str]:
+        env_username = (
+            os.getenv("CLIENT_AUTH_USERNAME")
+            or os.getenv("AUTH_USERNAME")
+            or os.getenv("DC_USERNAME")
+        )
+        env_password = (
+            os.getenv("CLIENT_AUTH_PASSWORD")
+            or os.getenv("AUTH_PASSWORD")
+            or os.getenv("DC_PASSWORD")
+        )
+
+        if env_username and env_password:
+            self.ui.notify("🔐 使用环境变量中的授权凭证。")
+            return env_username.strip(), env_password.strip()
+
+        preset_username = env_username.strip() if env_username else None
+        return self.ui.prompt_client_credentials(preset_username=preset_username)
+
+    @staticmethod
+    def _mask_username(username: str) -> str:
+        if not username:
+            return "***"
+        if "@" in username:
+            local, _, domain = username.partition("@")
+            if len(local) <= 3:
+                masked_local = "*" * len(local)
+            else:
+                masked_local = local[:3] + "*" * (len(local) - 3)
+            return f"{masked_local}@{domain}"
+        if len(username) <= 3:
+            return "*" * len(username)
+        return username[:3] + "*" * (len(username) - 3)
+
+    def _on_warning(self, message: str) -> None:
+        self.ui.notify(
+            "\n⚠️ 授权状态检查连续失败，请检查网络连接。详情: " + message
+        )
+
+    def _on_revoked(self, message: str) -> None:
+        self.client.clear_cached_state()
+        self.ui.notify("\n" + self.ui.section_divider)
+        self.ui.notify("❌ 授权已失效，程序将退出。")
+        if message:
+            self.ui.notify(f"原因: {message}")
+        self.ui.notify(self.ui.section_divider)
+        os._exit(1)
+
+    @staticmethod
+    def _get_env_int(name: str, default: int) -> int:
+        value = os.getenv(name)
+        if not value:
+            return default
+        try:
+            parsed = int(value)
+        except ValueError:
+            return default
+        return max(1, parsed)
+
+
+def _sanitize_username_for_storage(username: str) -> str:
+    if not username:
+        return "default"
+    return re.sub(r"[^A-Za-z0-9._-]", "_", username)
 
 
 def check_script_expiration():
@@ -2109,6 +2274,8 @@ def run(playwright: Playwright, ui: UserInteractionFlow) -> None:
     """
     主运行函数 - 保持原有的登录和会话管理逻辑
     """
+    if not user_name or not password:
+        raise RuntimeError("User credentials are not initialized. Please authenticate before running the workflow.")
     # 检查脚本有效期
     # check_script_expiration()
 
@@ -2116,7 +2283,8 @@ def run(playwright: Playwright, ui: UserInteractionFlow) -> None:
     browser = playwright.chromium.launch(headless=False)
     
     # 尝试加载存储的状态
-    storage_state_path = AUTH_STATE_DIR / f"{user_name}_auth_state.json"
+    safe_username = _sanitize_username_for_storage(user_name)
+    storage_state_path = AUTH_STATE_DIR / f"{safe_username}_auth_state.json"
     if storage_state_path.exists():
         context = browser.new_context(storage_state=str(storage_state_path), no_viewport=True)
     else:
@@ -2181,7 +2349,8 @@ def test_process_product_edit_enhanced(ui: UserInteractionFlow):
         browser = playwright.chromium.launch(headless=False)
         
         # 尝试加载存储的登录状态
-        storage_state_path = AUTH_STATE_DIR / f"{user_name}_auth_state.json"
+        safe_username = _sanitize_username_for_storage(user_name)
+        storage_state_path = AUTH_STATE_DIR / f"{safe_username}_auth_state.json"
         
         if storage_state_path.exists():
             context = browser.new_context(storage_state=str(storage_state_path), no_viewport=True)
@@ -2319,40 +2488,53 @@ def create_test_product_data():
 def main():
     """程序入口点"""
     import sys
-    
-    global run_model
+
+    global run_model, user_name, password
+
     ui = UserInteractionFlow()
-    
-    # 检查是否是测试模式
-    if len(sys.argv) > 1 and sys.argv[1] == "--test":
-        run_model = 'test'
-        test_process_product_edit_enhanced(ui)
+    authenticator = ClientAuthenticator(ui)
+
+    try:
+        auth_context = authenticator.authenticate()
+    except SystemExit:
+        authenticator.shutdown()
         return
-    
-    ui.display_welcome_screen()
-    while True:
-        action = ui.prompt_main_action()
-        if action == "start":
-            run_model = "default"
-            ui.notify("\n🚀 准备启动采集箱处理流程...")
-            try:
-                with sync_playwright() as playwright:
-                    run(playwright, ui)
-            except Exception as exc:
-                ui.notify(f"❌ 运行过程中出现异常: {exc}")
-            if not ui.prompt_return_to_menu():
-                break
-            ui.display_welcome_screen()
-        elif action == "test":
+
+    user_name = auth_context["username"]
+    password = auth_context["password"]
+
+    try:
+        if len(sys.argv) > 1 and sys.argv[1] == "--test":
             run_model = "test"
             test_process_product_edit_enhanced(ui)
-            run_model = "default"
-            if not ui.prompt_return_to_menu():
+            return
+
+        ui.display_welcome_screen()
+        while True:
+            action = ui.prompt_main_action()
+            if action == "start":
+                run_model = "default"
+                ui.notify("\n🚀 准备启动采集箱处理流程...")
+                try:
+                    with sync_playwright() as playwright:
+                        run(playwright, ui)
+                except Exception as exc:
+                    ui.notify(f"❌ 运行过程中出现异常: {exc}")
+                if not ui.prompt_return_to_menu():
+                    break
+                ui.display_welcome_screen()
+            elif action == "test":
+                run_model = "test"
+                test_process_product_edit_enhanced(ui)
+                run_model = "default"
+                if not ui.prompt_return_to_menu():
+                    break
+                ui.display_welcome_screen()
+            else:  # exit
                 break
-            ui.display_welcome_screen()
-        else:  # exit
-            break
-    
+    finally:
+        authenticator.shutdown()
+
     ui.say_goodbye()
 
 
