@@ -33,8 +33,9 @@ from unified_form_filler import UnifiedFormFiller
 from ai_category_validator import AICategoryValidator
 from csv_logger import write_unreasonable_category_to_csv, write_processing_exception_to_csv, csv_logger
 from client_authorization import ensure_client_authorized
+from playwright_env import configure_playwright_browsers_path
 
-    
+
 # 登录信息
 # user_name = "liyoutest001"
 user_name = "getongtong2025"
@@ -49,6 +50,8 @@ BASE_DIR = Path(__file__).resolve().parent
 PROJECT_ROOT = BASE_DIR.parent
 AUTH_STATE_DIR = PROJECT_ROOT / "data" / "auth_states"
 AUTH_STATE_DIR.mkdir(parents=True, exist_ok=True)
+
+configure_playwright_browsers_path()
 
 
 class UserInteractionFlow:
