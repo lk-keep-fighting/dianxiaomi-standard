@@ -144,6 +144,8 @@ def build_executable(args: argparse.Namespace, env_values: Dict[str, str]) -> No
         "playwright.sync_api._generated",
         "--collect-all",
         "playwright",
+        "--collect-all",
+        "openai",
         "--paths",
         str(SRC_DIR),
     ]
