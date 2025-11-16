@@ -1,4 +1,4 @@
-# 数字酋长自动化 (Digital Chief Automation)
+# 店小秘自动化 (Digital Chief Automation)
 
 一个基于 Playwright 的浏览器自动化工具，专为数字营销和数据提取而设计。
 
@@ -14,7 +14,7 @@
 ## 📁 项目结构
 
 ```
-数字酋长自动化/
+店小秘自动化/
 ├── src/
 │   ├── __init__.py
 │   ├── main.py                    # 主应用程序入口

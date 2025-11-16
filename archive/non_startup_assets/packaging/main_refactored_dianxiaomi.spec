@@ -156,7 +156,7 @@ exe = EXE(
     a.zipfiles,
     a.datas,
     [],
-    name='数字酋长自动化工具',
+    name='店小秘自动化工具',
     debug=False,
     bootloader_ignore_signals=False,
     strip=False,

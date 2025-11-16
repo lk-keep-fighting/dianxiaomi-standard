@@ -79,7 +79,7 @@ def _get_form_container(self):
     main_frame = self.page.locator('iframe[name="main"]').content_frame
     return main_frame.locator('form.product-form')
     
-    # 示例3：多层iframe（如数字酋长）
+    # 示例3：多层iframe（如店小秘）
     main_frame = self.page.locator('iframe[name="iframeModal_flag_0"]').content_frame
     edit_frame = main_frame.locator('iframe[name^="iframeModal_editPostTemplet"]').content_frame
     return edit_frame
@@ -121,7 +121,7 @@ def _fill_form_field(self, container, field_name: str, value: str):
     # 模式3: 使用data属性
     selector = f"input[data-field='{field_name}']"
     
-    # 模式4: 使用attrkey属性（数字酋长风格）
+    # 模式4: 使用attrkey属性（店小秘风格）
     selector = f"div[attrkey='{field_name}']"
 ```
 

@@ -1,4 +1,4 @@
-# 数字酋长自动化系统 - 重构版
+# 店小秘自动化系统 - 重构版
 
 [![Tests](https://img.shields.io/badge/tests-passing-green.svg)](archive/non_startup_assets/tests/test_refactored_system.py)
 [![Python](https://img.shields.io/badge/python-3.8%2B-blue.svg)](https://python.org)
@@ -23,7 +23,7 @@
 ## 📁 项目结构
 
 ```
-数字酋长自动化-warp2/
+店小秘自动化-warp2/
 ├── data/                               # 运行时数据与缓存
 │   └── auth_states/                    # 登录状态缓存（Playwright storage）
 ├── scripts/                            # 启动与环境准备脚本
@@ -67,7 +67,7 @@
 ```bash
 # 克隆项目
 git clone <repository-url>
-cd 数字酋长自动化-warp2
+cd 店小秘自动化-warp2
 
 # 一键安装所有依赖
 ./scripts/install_dependencies.sh

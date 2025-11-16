@@ -128,7 +128,7 @@ exe = EXE(
     a.zipfiles,
     a.datas,
     [],
-    name='数字酋长自动化工具',
+    name='店小秘自动化工具',
     debug=False,
     bootloader_ignore_signals=False,
     strip=False,
@@ -181,7 +181,7 @@ def create_build_batch():
     batch_content = '''@echo off
 chcp 65001 >nul
 echo ========================================
-echo    数字酋长自动化工具 - Windows打包
+echo    店小秘自动化工具 - Windows打包
 echo ========================================
 
 echo.
@@ -194,12 +194,12 @@ pyinstaller spec_files/main_refactored_dianxiaomi.spec --distpath build_output -
 
 echo.
 echo ✅ 构建完成！
-echo 📁 可执行文件位置: build_output/数字酋长自动化工具.exe
+echo 📁 可执行文件位置: build_output/店小秘自动化工具.exe
 echo.
 
 echo 🔧 正在安装Playwright浏览器...
 cd build_output
-"数字酋长自动化工具.exe" --version >nul 2>&1
+"店小秘自动化工具.exe" --version >nul 2>&1
 if errorlevel 1 (
     echo ⚠️ 可执行文件测试失败，请检查构建过程
 ) else (
@@ -209,7 +209,7 @@ if errorlevel 1 (
 echo.
 echo 📋 使用说明：
 echo 1. 运行前请确保安装了Playwright浏览器：playwright install
-echo 2. 双击 build_output/数字酋长自动化工具.exe 运行程序
+echo 2. 双击 build_output/店小秘自动化工具.exe 运行程序
 echo 3. 如遇问题，请检查控制台输出信息
 
 pause
@@ -226,7 +226,7 @@ def create_installer_script():
     
     installer_content = '''#!/usr/bin/env python3
 """
-数字酋长自动化工具 - 一键安装脚本
+店小秘自动化工具 - 一键安装脚本
 
 自动安装所有依赖并准备运行环境
 """
@@ -260,7 +260,7 @@ def install_playwright_browsers():
 
 def main():
     print("=" * 50)
-    print("  数字酋长自动化工具 - 一键安装")
+    print("  店小秘自动化工具 - 一键安装")
     print("=" * 50)
     
     # 检查Python版本
@@ -298,13 +298,13 @@ def create_readme():
     """创建Windows用户说明文档"""
     print("📖 创建用户说明文档...")
     
-    readme_content = '''# 数字酋长自动化工具 - Windows版本
+    readme_content = '''# 店小秘自动化工具 - Windows版本
 
 ## 🚀 快速开始
 
 ### 方法一：使用可执行文件（推荐）
 1. 双击 `build_windows.bat` 开始构建Windows程序
-2. 构建完成后，运行 `build_output/数字酋长自动化工具.exe`
+2. 构建完成后，运行 `build_output/店小秘自动化工具.exe`
 
 ### 方法二：使用Python脚本
 1. 运行 `python install.py` 安装所有依赖
@@ -332,7 +332,7 @@ playwright install
 
 ## 📁 文件说明
 
-- `数字酋长自动化工具.exe` - 主程序（构建后生成）
+- `店小秘自动化工具.exe` - 主程序（构建后生成）
 - `install.py` - 一键安装脚本
 - `build_windows.bat` - Windows构建脚本
 - `requirements.txt` - Python依赖列表
@@ -371,7 +371,7 @@ playwright install
 3. 控制台输出日志
 
 ---
-© 2024 数字酋长自动化工具
+© 2024 店小秘自动化工具
 '''
     
     with open("README_WINDOWS.md", 'w', encoding='utf-8') as f:
@@ -412,7 +412,7 @@ def build_executable():
 def main():
     """主函数"""
     print("=" * 60)
-    print("    数字酋长自动化工具 - Windows打包工具")
+    print("    店小秘自动化工具 - Windows打包工具")
     print("=" * 60)
     
     # 检查当前目录
@@ -445,7 +445,7 @@ def main():
             if success:
                 print("\n" + "=" * 60)
                 print("🎉 构建完成！")
-                print("📁 可执行文件位置: build_output/数字酋长自动化工具.exe")
+                print("📁 可执行文件位置: build_output/店小秘自动化工具.exe")
                 print("📖 使用说明: README_WINDOWS.md")
                 print("🚀 也可以运行 build_windows.bat 重新构建")
                 print("=" * 60)

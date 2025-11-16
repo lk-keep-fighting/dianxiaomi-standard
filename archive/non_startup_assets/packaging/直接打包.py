@@ -71,7 +71,7 @@ def run_pyinstaller():
         "pyinstaller",
         "--onefile",  # 打包成单个可执行文件
         "--console",  # 保留控制台窗口
-        "--name=数字酋长自动化工具",
+        "--name=店小秘自动化工具",
         "--distpath=build_output",
         "--workpath=build_temp",
         "--specpath=build_temp",
@@ -119,7 +119,7 @@ def run_pyinstaller():
             print("✅ 打包成功！")
             
             # 检查输出文件
-            exe_path = Path("build_output/数字酋长自动化工具.exe")
+            exe_path = Path("build_output/店小秘自动化工具.exe")
             if exe_path.exists():
                 size_mb = exe_path.stat().st_size / 1024 / 1024
                 print(f"📁 可执行文件: {exe_path}")
@@ -141,10 +141,10 @@ def run_pyinstaller():
 def create_run_instructions():
     """创建运行说明"""
     instructions = """
-# 数字酋长自动化工具 - 使用说明
+# 店小秘自动化工具 - 使用说明
 
 ## 🚀 运行程序
-1. 双击 `数字酋长自动化工具.exe` 启动程序
+1. 双击 `店小秘自动化工具.exe` 启动程序
 2. 首次运行会自动安装浏览器组件（需要网络连接）
 3. 按照程序提示进行操作
 
@@ -176,7 +176,7 @@ def create_run_instructions():
 def main():
     """主函数"""
     print("=" * 50)
-    print("  数字酋长自动化工具 - 直接打包")
+    print("  店小秘自动化工具 - 直接打包")
     print("=" * 50)
     print()
     
@@ -203,7 +203,7 @@ def main():
         print("\n" + "=" * 50)
         print("🎉 打包完成！")
         print("📁 输出目录: build_output/")
-        print("🚀 可执行文件: build_output/数字酋长自动化工具.exe")
+        print("🚀 可执行文件: build_output/店小秘自动化工具.exe")
         print("📖 使用说明: build_output/使用说明.txt")
         print("=" * 50)
         
@@ -212,7 +212,7 @@ def main():
             test = input("\n🤔 是否现在测试运行程序？(y/n): ").lower().strip()
             if test in ['y', 'yes', '是']:
                 print("🧪 启动测试...")
-                exe_path = "build_output/数字酋长自动化工具.exe"
+                exe_path = "build_output/店小秘自动化工具.exe"
                 subprocess.Popen([exe_path], shell=True)
         except KeyboardInterrupt:
             pass

@@ -59,12 +59,11 @@ class UserInteractionFlow:
 
     def display_welcome_screen(self) -> None:
         print("\n" + self.section_divider)
-        print("🌟 重构后的数字酋长自动化系统")
+        print("🌟 欢迎使用店小秘自动化系统")
         print(self.section_divider)
-        print("📋 功能总览:")
-        print("  • Amazon商品解析与数据标准化")
-        print("  • 店小秘表单智能填充")
-        print("  • 手动审核 / 自动批处理流程")
+        print("📋 使用流程:")
+        print("  • 选择[1]打开自动打开店小秘界面；")
+        print("  • 登录账号后回到当前界面按提示操作")
         print(self.section_divider)
 
     def _display_main_menu(self) -> None:
@@ -142,7 +141,7 @@ class UserInteractionFlow:
         input(f"{message.strip()}\n检查完成后按回车继续...")
 
     def say_goodbye(self) -> None:
-        print("\n感谢使用数字酋长自动化系统，期待再次见到您！")
+        print("\n感谢使用店小秘自动化系统，期待再次见到您！")
 
 
 def check_script_expiration():

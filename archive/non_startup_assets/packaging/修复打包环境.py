@@ -127,7 +127,7 @@ exe = EXE(
     a.zipfiles,
     a.datas,
     [],
-    name='数字酋长自动化工具',
+    name='店小秘自动化工具',
     debug=False,
     bootloader_ignore_signals=False,
     strip=False,
@@ -168,7 +168,7 @@ def run_simple_build():
             print("✅ 简化构建成功！")
             
             # 检查输出文件
-            exe_path = Path("build_output/数字酋长自动化工具.exe")
+            exe_path = Path("build_output/店小秘自动化工具.exe")
             if exe_path.exists():
                 size_mb = exe_path.stat().st_size / 1024 / 1024
                 print(f"📁 可执行文件: {exe_path}")
