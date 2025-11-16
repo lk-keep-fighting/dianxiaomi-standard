@@ -87,6 +87,23 @@ python -m playwright install chromium
 python src/main.py
 ```
 
+## 🪟 Windows 自包含可执行程序
+
+现在可以通过 `scripts/package_windows_exe.py` 一键构建可直接运行的 Windows 可执行程序，所有必要的环境变量（例如 Supabase 地址与密钥）都会自动写入打包产物中，终端用户无需额外配置。
+
+```powershell
+# 1. 安装运行与打包依赖
+pip install -r requirements.txt
+pip install -r requirements-packaging.txt
+
+# 2. 执行打包脚本
+python scripts/package_windows_exe.py --supabase-url https://your-project.supabase.co --supabase-api-key your-service-role-key
+```
+
+> 💡 如果已经有 `.env` 文件，可通过 `--env-file .env.production` 读取配置，也可以使用 `--set KEY=VALUE` 传入额外的变量。脚本会在打包前临时写入 `src/_embedded_env.py`，PyInstaller 会把这些值烘焙进最终的 `digital-chief.exe` 中。
+
+打包成功后，可执行文件位于 `dist/windows/` 目录下，双击即可运行，无需额外的环境变量设置。
+
 ### 测试系统
 
 ```bash
