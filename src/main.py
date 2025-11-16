@@ -1870,14 +1870,30 @@ def process_product_edit_enhanced(context, edit_page: Page, manual_mode: bool = 
         # print("✅ 编辑页面已打开")
         
         # Extract web_url from the sourceUrl input field
+        source_url_input = edit_page.locator("input[name='sourceUrl']")
+        web_url = None
         try:
-            web_url = edit_page.locator("input[name='sourceUrl']").input_value()
+            source_url_input.wait_for(state="attached", timeout=15000)
+        except Exception as wait_error:
+            print(f"⚠️ 等待访问链接输入框失败: {wait_error}")
+        else:
+            for attempt in range(12):
+                try:
+                    candidate = (source_url_input.input_value() or "").strip()
+                except Exception:
+                    candidate = ""
+                if not candidate:
+                    candidate = (source_url_input.get_attribute("value") or "").strip()
+                if candidate:
+                    web_url = candidate
+                    break
+                if attempt == 0:
+                    print("⏳ 页面加载较慢，正在等待访问链接...")
+                edit_page.wait_for_timeout(1000)
+
+        if web_url:
             print(f"🔗 提取产品链接: {web_url[:60]}...")
-        except Exception as e:
-            print(f"⚠️ 提取链接失败: {e}")
-            web_url = None
-        
-        if not web_url:
+        else:
             print("❌ 未找到访问链接，跳过此产品")
             edit_page.close()
             return False
