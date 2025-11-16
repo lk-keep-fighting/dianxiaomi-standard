@@ -23,6 +23,8 @@ PROJECT_ROOT = Path(__file__).resolve().parents[1]
 SRC_DIR = PROJECT_ROOT / "src"
 EMBEDDED_ENV_PATH = SRC_DIR / "_embedded_env.py"
 DEFAULT_APP_NAME = "digital-chief"
+PLAYWRIGHT_BROWSERS_DIR = PROJECT_ROOT / "build" / "playwright-browsers"
+PLAYWRIGHT_BROWSERS_TARGET = "playwright-browsers"
 
 
 def parse_dotenv(path: Path) -> Dict[str, str]:
@@ -68,13 +70,38 @@ def ensure_pyinstaller_available() -> str:
     )
 
 
-def resolve_add_data_args() -> List[str]:
+def ensure_playwright_browsers_installed(browsers: Iterable[str] = ("chromium",)) -> Path:
+    """Ensure required Playwright browsers are downloaded and return their directory."""
+
+    target = PLAYWRIGHT_BROWSERS_DIR
+    target.mkdir(parents=True, exist_ok=True)
+
+    env = os.environ.copy()
+    env["PLAYWRIGHT_BROWSERS_PATH"] = str(target)
+    command = [sys.executable, "-m", "playwright", "install", *browsers]
+
+    browser_list = ", ".join(browsers)
+    print("🌐 确保 Playwright 浏览器已安装:", browser_list)
+    try:
+        subprocess.run(command, check=True, cwd=PROJECT_ROOT, env=env)
+    except subprocess.CalledProcessError as exc:
+        raise RuntimeError(
+            f"Playwright 浏览器下载失败，请检查网络连接或手动执行 `playwright install {browser_list}` 后重试。"
+        ) from exc
+    return target
+
+
+def resolve_add_data_args(extra_entries: Optional[Iterable[Tuple[Path, str]]] = None) -> List[str]:
     """Build the ``--add-data`` arguments for PyInstaller."""
 
     entries: List[Tuple[Path, str]] = [
         (PROJECT_ROOT / "config", "config"),
         (PROJECT_ROOT / "data", "data"),
     ]
+
+    if extra_entries:
+        for src, target in extra_entries:
+            entries.append((Path(src), target))
 
     args: List[str] = []
     separator = ";" if os.name == "nt" else ":"
@@ -127,6 +154,11 @@ def build_executable(args: argparse.Namespace, env_values: Dict[str, str]) -> No
     dist_dir.mkdir(parents=True, exist_ok=True)
     build_dir.mkdir(parents=True, exist_ok=True)
 
+    playwright_browsers_dir = ensure_playwright_browsers_installed()
+    extra_data: List[Tuple[Path, str]] = [
+        (playwright_browsers_dir, PLAYWRIGHT_BROWSERS_TARGET),
+    ]
+
     command: List[str] = [
         pyinstaller,
         "--noconfirm",
@@ -149,11 +181,13 @@ def build_executable(args: argparse.Namespace, env_values: Dict[str, str]) -> No
         "--paths",
         str(SRC_DIR),
     ]
-    command.extend(resolve_add_data_args())
+    command.extend(resolve_add_data_args(extra_data))
     command.append(str(SRC_DIR / "main.py"))
 
     env = os.environ.copy()
     env.update(env_values)
+    if extra_data:
+        env["PLAYWRIGHT_BROWSERS_PATH"] = str(playwright_browsers_dir)
 
     print("🛠️ 运行打包命令:")
     print(" ".join(command))
