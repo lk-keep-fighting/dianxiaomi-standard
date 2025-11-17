@@ -23,7 +23,9 @@ import time
 import datetime
 import csv
 from pathlib import Path
-from typing import Optional
+from dataclasses import dataclass
+from getpass import getpass
+from typing import Optional, Tuple
 from playwright.sync_api import Page, Playwright, sync_playwright
 
 # 导入重构后的统一组件
@@ -36,14 +38,39 @@ from client_authorization import ensure_client_authorized
 from playwright_env import configure_playwright_browsers_path
 
 
-# 登录信息
-# user_name = "liyoutest001"
-user_name = "getongtong2025"
-password = "Aa741852963."
-run_model="default"
+# 登录信息默认值
+# DEFAULT_USERNAME = "liyoutest001"
+DEFAULT_USERNAME = "getongtong2025"
+DEFAULT_PASSWORD = "Aa741852963."
+run_model = "default"
 # # 备用登录信息
-# user_name = "18256261013"
-# password = "Aa741852963"
+# DEFAULT_USERNAME = "18256261013"
+# DEFAULT_PASSWORD = "Aa741852963"
+
+
+@dataclass
+class AccountCredentials:
+    username: str
+    password: str
+
+
+_current_credentials = AccountCredentials(DEFAULT_USERNAME, DEFAULT_PASSWORD)
+
+
+def get_current_credentials() -> AccountCredentials:
+    return _current_credentials
+
+
+def set_current_credentials(username: str, password: str) -> None:
+    global _current_credentials
+    _current_credentials = AccountCredentials(username=username, password=password)
+
+
+def get_storage_state_path(username: str) -> Path:
+    """生成指定账号的认证状态文件路径。"""
+    safe_username = re.sub(r"[^\w.@-]", "_", username)
+    return AUTH_STATE_DIR / f"{safe_username}_auth_state.json"
+
 
 # 路径配置
 BASE_DIR = Path(__file__).resolve().parent
@@ -67,25 +94,30 @@ class UserInteractionFlow:
         print("📋 使用流程:")
         print("  • 选择[1]打开自动打开店小秘界面；")
         print("  • 登录账号后回到当前界面按提示操作")
+        current_credentials = get_current_credentials()
+        print(f"👤 当前账号: {current_credentials.username}")
         print(self.section_divider)
 
     def _display_main_menu(self) -> None:
         print("\n主操作菜单:")
         print("  [1] 开始处理采集箱产品")
         print("  [2] 打开测试工具")
-        print("  [3] 退出程序")
+        print("  [3] 切换登录账号")
+        print("  [4] 退出程序")
 
     def prompt_main_action(self) -> str:
         while True:
             self._display_main_menu()
-            choice = input("请选择操作 [1-3]: ").strip().lower()
+            choice = input("请选择操作 [1-4]: ").strip().lower()
             if choice == "":
                 choice = "1"
             if choice in {"1", "start", "s"}:
                 return "start"
             if choice in {"2", "test", "t"}:
                 return "test"
-            if choice in {"3", "exit", "e", "q", "quit"}:
+            if choice in {"3", "switch", "relogin", "logout", "account"}:
+                return "switch-account"
+            if choice in {"4", "exit", "e", "q", "quit"}:
                 return "exit"
             print("❌ 无效的选择，请重新输入。")
 
@@ -139,6 +171,21 @@ class UserInteractionFlow:
             if choice in {"1", "2", "3", "4"}:
                 return choice
             print("❌ 无效的选择，请输入 1-4。")
+
+    def prompt_relogin_credentials(self, default_username: str) -> Optional[Tuple[str, str]]:
+        print("\n🔐 切换店小秘账号")
+        username_prompt = f"请输入新的登录账号 [{default_username}]: "
+        username = input(username_prompt).strip()
+        if not username:
+            username = default_username
+        if not username:
+            self.notify("❌ 未提供账号，重新登录已取消。")
+            return None
+        password = getpass("请输入登录密码 (直接回车取消): ").strip()
+        if not password:
+            self.notify("❌ 未输入密码，重新登录已取消。")
+            return None
+        return username, password
 
     def pause_for_review(self, message: str) -> None:
         input(f"{message.strip()}\n检查完成后按回车继续...")
@@ -2124,6 +2171,159 @@ def closeAdModal(page: Page):
         
     
      
+def _is_login_required(page: Page) -> bool:
+    """判断当前页面是否仍处于登录界面。"""
+    selectors = [
+        "text=立即登录",
+        "input[placeholder*='用户名']",
+        "input[placeholder*='账号']",
+        "button:has-text('立即登录')",
+    ]
+    for selector in selectors:
+        try:
+            if page.locator(selector).count() > 0:
+                return True
+        except Exception:
+            continue
+    return False
+
+
+def ensure_login_state(
+    page: Page,
+    ui: UserInteractionFlow,
+    credentials: AccountCredentials,
+    storage_state_path: Path,
+    *,
+    force_refresh: bool = False,
+) -> bool:
+    """确保当前上下文已登录账号并保存认证状态。"""
+    if force_refresh and storage_state_path.exists():
+        try:
+            storage_state_path.unlink()
+            ui.notify(f"🧹 已清除旧的登录状态文件: {storage_state_path.name}")
+        except OSError as exc:
+            ui.notify(f"⚠️ 无法删除旧的登录状态文件: {exc}")
+
+    try:
+        page.goto("https://www.dianxiaomi.com/")
+        page.wait_for_load_state("domcontentloaded")
+    except Exception as exc:
+        ui.notify(f"⚠️ 打开店小秘首页时出现问题: {exc}")
+
+    login_required = force_refresh or _is_login_required(page)
+    if not login_required:
+        return True
+
+    if force_refresh:
+        ui.notify("🔐 即将切换账号，请在浏览器中完成新的登录。")
+    else:
+        ui.notify("🔐 检测到当前账号未登录，请在浏览器中完成登录。")
+
+    try:
+        username_input = page.get_by_role("textbox", name="请输入用户名")
+        username_input.click()
+        username_input.fill(credentials.username)
+    except Exception:
+        pass
+
+    try:
+        password_input = page.get_by_role("textbox", name="请输入密码")
+        password_input.click()
+        password_input.fill(credentials.password)
+    except Exception:
+        pass
+
+    ui.wait_for_confirmation("请在浏览器窗口完成登录后继续。")
+
+    try:
+        page.wait_for_timeout(1200)
+        page.reload()
+        page.wait_for_load_state("domcontentloaded")
+    except Exception:
+        pass
+
+    login_success = not _is_login_required(page)
+    if not login_success:
+        ui.notify("⚠️ 未检测到登录成功，如已完成登录可忽略此提示。")
+    else:
+        ui.notify(f"✅ 登录成功，账号: {credentials.username}")
+
+    try:
+        page.context.storage_state(path=str(storage_state_path))
+        ui.notify(f"💾 登录状态已保存至 {storage_state_path.name}")
+    except Exception as exc:
+        ui.notify(f"⚠️ 保存登录状态失败: {exc}")
+
+    return login_success
+
+
+def perform_logout_and_relogin(ui: UserInteractionFlow) -> None:
+    """提供菜单操作以退出当前账号并使用新账号重新登录。"""
+    current_credentials = get_current_credentials()
+    prompt_result = ui.prompt_relogin_credentials(current_credentials.username)
+    if prompt_result is None:
+        return
+
+    username, password = prompt_result
+    new_credentials = AccountCredentials(username=username, password=password)
+    new_storage_path = get_storage_state_path(username)
+
+    if new_storage_path.exists():
+        try:
+            new_storage_path.unlink()
+            ui.notify(f"🧹 已清除旧的登录状态文件: {new_storage_path.name}")
+        except OSError as exc:
+            ui.notify(f"⚠️ 无法删除旧的登录状态文件: {exc}")
+
+    ui.notify("🚀 正在打开浏览器以更新登录状态，请稍候...")
+
+    login_success = False
+
+    try:
+        with sync_playwright() as playwright:
+            browser = playwright.chromium.launch(headless=False)
+            context = None
+            try:
+                context = browser.new_context(no_viewport=True)
+                page = context.new_page()
+                login_success = ensure_login_state(
+                    page,
+                    ui,
+                    new_credentials,
+                    new_storage_path,
+                    force_refresh=True,
+                )
+            finally:
+                if context is not None:
+                    context.close()
+                browser.close()
+    except Exception as exc:
+        ui.notify(f"❌ 重新登录流程失败: {exc}")
+        return
+
+    if not login_success:
+        if new_storage_path.exists():
+            try:
+                new_storage_path.unlink()
+            except OSError:
+                pass
+        ui.notify("⚠️ 未能确认登录成功，请核对账号信息后重新尝试。")
+        return
+
+    set_current_credentials(username, password)
+
+    if username != current_credentials.username:
+        old_storage_path = get_storage_state_path(current_credentials.username)
+        if old_storage_path.exists():
+            try:
+                old_storage_path.unlink()
+                ui.notify(f"🧹 已移除旧账号 {current_credentials.username} 的登录状态文件。")
+            except OSError as exc:
+                ui.notify(f"⚠️ 清理旧账号状态文件失败: {exc}")
+
+    ui.notify(f"🎉 登录账号已切换为 {username}")
+
+
 def run(playwright: Playwright, ui: UserInteractionFlow) -> None:
     """
     主运行函数 - 保持原有的登录和会话管理逻辑
@@ -2131,43 +2331,27 @@ def run(playwright: Playwright, ui: UserInteractionFlow) -> None:
     # 检查脚本有效期
     # check_script_expiration()
 
-    
     browser = playwright.chromium.launch(headless=False)
-    
-    # 尝试加载存储的状态
-    storage_state_path = AUTH_STATE_DIR / f"{user_name}_auth_state.json"
+
+    credentials = get_current_credentials()
+    storage_state_path = get_storage_state_path(credentials.username)
+
     if storage_state_path.exists():
         context = browser.new_context(storage_state=str(storage_state_path), no_viewport=True)
     else:
         context = browser.new_context(no_viewport=True)
-    
+
     page = context.new_page()
-    
-    try:
-        page.goto("https://www.dianxiaomi.com/")
-        # 检查是否已登录
-        if page.locator("text=立即登录").count() > 0:
-            raise Exception("Not logged in")
-    except Exception as e:
-        # 需要登录
-        ui.notify(f"🔐 需要登录: {e}")
-        page.get_by_role("textbox", name="请输入用户名").click()
-        page.get_by_role("textbox", name="请输入用户名").fill(user_name)
-        page.get_by_role("textbox", name="请输入密码").click()
-        page.get_by_role("textbox", name="请输入密码").fill(password)
-        ui.wait_for_confirmation("请在浏览器窗口完成登录后继续。")
-        # Save authentication state
-        page.context.storage_state(path=str(storage_state_path))
-        ui.notify("✅ 登录成功，状态已保存")
-    
+
+    ensure_login_state(page, ui, credentials, storage_state_path)
+
     page.goto("https://www.dianxiaomi.com/web/sheinProduct/draft")
     print("✅ 已导航到采集箱列表")
     ui.wait_for_confirmation("请在店小秘采集箱页面完成筛选后继续。")
-    
 
     closeAdModal(page)
     run_manual_mode(context, page, ui)
-    
+
     # 清理资源
     print("\n🏁 所有操作已完成，浏览器保持打开状态供您继续操作...")
     ui.wait_for_confirmation("按回车退出程序并关闭浏览器。")
@@ -2200,11 +2384,12 @@ def test_process_product_edit_enhanced(ui: UserInteractionFlow):
         browser = playwright.chromium.launch(headless=False)
         
         # 尝试加载存储的登录状态
-        storage_state_path = AUTH_STATE_DIR / f"{user_name}_auth_state.json"
-        
+        credentials = get_current_credentials()
+        storage_state_path = get_storage_state_path(credentials.username)
+
         if storage_state_path.exists():
             context = browser.new_context(storage_state=str(storage_state_path), no_viewport=True)
-            print("✅ 已加载保存的登录状态")
+            print(f"✅ 已加载账号 {credentials.username} 的登录状态")
         else:
             context = browser.new_context(no_viewport=True)
             print("⚠️ 未找到登录状态，请先登录")
@@ -2370,6 +2555,9 @@ def main():
             run_model = "default"
             if not ui.prompt_return_to_menu():
                 break
+            ui.display_welcome_screen()
+        elif action == "switch-account":
+            perform_logout_and_relogin(ui)
             ui.display_welcome_screen()
         else:  # exit
             break
