@@ -38,8 +38,9 @@ from playwright_env import configure_playwright_browsers_path
 
 # 登录信息
 # user_name = "liyoutest001"
-user_name = "getongtong2025"
-password = "Aa741852963."
+# user_name = "getongtong2025"
+user_name = "你的用户名"
+password = ""
 run_model="default"
 # # 备用登录信息
 # user_name = "18256261013"

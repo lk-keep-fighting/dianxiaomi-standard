@@ -1,3 +1,3 @@
 export USERNAME='liyoutest001'
-export PASSWORD='Aa741852963.'
+export PASSWORD='.'
 python main.py

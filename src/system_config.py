@@ -40,8 +40,8 @@ class SystemConfig:
     expiration_hours: int = 2
     
     # 登录设置（环境变量优先）
-    default_username: str = "16636131310"
-    default_password: str = "2042612a"
+    default_username: str = "YOURE UERNAME"
+    default_password: str = "YOUR PASSWORK"
     
     # Amazon解析设置
     amazon_timeout: int = 20000
