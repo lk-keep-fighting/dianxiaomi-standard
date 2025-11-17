@@ -32,7 +32,11 @@ from product_data import ProductData
 from unified_form_filler import UnifiedFormFiller
 from ai_category_validator import AICategoryValidator
 from csv_logger import write_unreasonable_category_to_csv, write_processing_exception_to_csv, csv_logger
-from client_authorization import ensure_client_authorized
+from client_authorization import (
+    ClientAuthorizationError,
+    ensure_client_authorized,
+    logout_client_authorization,
+)
 from playwright_env import configure_playwright_browsers_path
 
 
@@ -61,32 +65,42 @@ class UserInteractionFlow:
     def __init__(self) -> None:
         self.section_divider = "═" * 72
 
-    def display_welcome_screen(self) -> None:
+    def display_welcome_screen(self, authorized_username: Optional[str] = None) -> None:
         print("\n" + self.section_divider)
         print("🌟 欢迎使用店小秘自动化系统")
         print(self.section_divider)
         print("📋 使用流程:")
         print("  • 选择[1]打开自动打开店小秘界面；")
         print("  • 登录账号后回到当前界面按提示操作")
+        if authorized_username:
+            print(f"🔐 当前授权账号: {authorized_username}")
+        else:
+            print("🔐 当前授权账号: 未登录")
         print(self.section_divider)
 
     def _display_main_menu(self) -> None:
         print("\n主操作菜单:")
         print("  [1] 开始处理采集箱产品")
         print("  [2] 打开测试工具")
-        print("  [3] 退出程序")
+        print("  [3] 切换授权账号")
+        print("  [4] 退出授权登录")
+        print("  [5] 退出程序")
 
     def prompt_main_action(self) -> str:
         while True:
             self._display_main_menu()
-            choice = input("请选择操作 [1-3]: ").strip().lower()
+            choice = input("请选择操作 [1-5]: ").strip().lower()
             if choice == "":
                 choice = "1"
             if choice in {"1", "start", "s"}:
                 return "start"
             if choice in {"2", "test", "t"}:
                 return "test"
-            if choice in {"3", "exit", "e", "q", "quit"}:
+            if choice in {"3", "switch", "account", "change", "c"}:
+                return "switch"
+            if choice in {"4", "logout", "log", "l"}:
+                return "logout"
+            if choice in {"5", "exit", "e", "q", "quit"}:
                 return "exit"
             print("❌ 无效的选择，请重新输入。")
 
@@ -2340,21 +2354,30 @@ def main():
     """程序入口点"""
     import sys
 
-    ensure_client_authorized()
-    
     global run_model
     ui = UserInteractionFlow()
-    
+
+    try:
+        auth_state = ensure_client_authorized()
+    except ClientAuthorizationError as exc:
+        ui.notify(f"❌ 授权校验失败: {exc}")
+        return
+
     # 检查是否是测试模式
     if len(sys.argv) > 1 and sys.argv[1] == "--test":
-        run_model = 'test'
+        run_model = "test"
         test_process_product_edit_enhanced(ui)
         return
-    
-    ui.display_welcome_screen()
+
+    ui.display_welcome_screen(auth_state.username if auth_state else None)
     while True:
         action = ui.prompt_main_action()
         if action == "start":
+            try:
+                auth_state = ensure_client_authorized()
+            except ClientAuthorizationError as exc:
+                ui.notify(f"❌ 授权校验失败: {exc}")
+                continue
             run_model = "default"
             ui.notify("\n🚀 准备启动采集箱处理流程...")
             try:
@@ -2364,17 +2387,49 @@ def main():
                 ui.notify(f"❌ 运行过程中出现异常: {exc}")
             if not ui.prompt_return_to_menu():
                 break
-            ui.display_welcome_screen()
+            ui.display_welcome_screen(auth_state.username if auth_state else None)
         elif action == "test":
+            try:
+                auth_state = ensure_client_authorized()
+            except ClientAuthorizationError as exc:
+                ui.notify(f"❌ 授权校验失败: {exc}")
+                continue
             run_model = "test"
             test_process_product_edit_enhanced(ui)
             run_model = "default"
             if not ui.prompt_return_to_menu():
                 break
-            ui.display_welcome_screen()
+            ui.display_welcome_screen(auth_state.username if auth_state else None)
+        elif action == "switch":
+            try:
+                logout_client_authorization()
+            except ClientAuthorizationError as exc:
+                ui.notify(f"❌ 账号切换失败: {exc}")
+                ui.display_welcome_screen(auth_state.username if auth_state else None)
+                continue
+            try:
+                auth_state = ensure_client_authorized()
+            except ClientAuthorizationError as exc:
+                ui.notify(f"❌ 账号切换失败: {exc}")
+                auth_state = None
+            else:
+                ui.notify(f"🔁 已切换至授权账号: {auth_state.username}")
+            ui.display_welcome_screen(auth_state.username if auth_state else None)
+        elif action == "logout":
+            try:
+                removed = logout_client_authorization()
+            except ClientAuthorizationError as exc:
+                ui.notify(f"❌ 退出授权失败: {exc}")
+            else:
+                if removed:
+                    ui.notify("🔒 已退出当前授权账号，本地授权缓存已清除。")
+                else:
+                    ui.notify("🔒 已退出当前授权账号。")
+                auth_state = None
+            ui.display_welcome_screen(auth_state.username if auth_state else None)
         else:  # exit
             break
-    
+
     ui.say_goodbye()
 
 
