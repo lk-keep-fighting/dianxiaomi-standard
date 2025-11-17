@@ -323,3 +323,36 @@ _CACHED_STATE: Optional[AuthorizationState] = None
 def _cache_state(state: AuthorizationState) -> None:
     global _CACHED_STATE
     _CACHED_STATE = state
+
+
+def _authorization_state_path() -> Path:
+    base_dir = Path(__file__).resolve().parent
+    project_root = base_dir.parent
+    state_dir = project_root / "data" / "auth_states"
+    state_dir.mkdir(parents=True, exist_ok=True)
+    return state_dir / ClientAuthorizationManager.STATE_FILENAME
+
+
+def reset_client_authorization_cache() -> None:
+    global _AUTHORIZATION_CONFIRMED, _CACHED_STATE
+    _AUTHORIZATION_CONFIRMED = False
+    _CACHED_STATE = None
+
+
+def logout_client_authorization(remove_cached_state: bool = True) -> bool:
+    removed = False
+    if remove_cached_state:
+        state_path = _authorization_state_path()
+        if state_path.exists():
+            try:
+                state_path.unlink()
+                removed = True
+            except OSError as exc:  # pragma: no cover - runtime feedback
+                raise ClientAuthorizationError(f"无法删除授权缓存文件: {exc}") from exc
+    reset_client_authorization_cache()
+    return removed
+
+
+def force_reauthorize_client(remove_cached_state: bool = True) -> AuthorizationState:
+    logout_client_authorization(remove_cached_state=remove_cached_state)
+    return ensure_client_authorized()
