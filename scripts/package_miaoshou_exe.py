@@ -105,6 +105,8 @@ def build_executable(app_name: str) -> None:
         "--collect-all",
         "playwright",
         # Excel 导出库收集
+        "--hidden-import",
+        "xlsxwriter",
         "--collect-all",
         "xlsxwriter",
         # 将 src 放入模块搜索路径
