@@ -30,7 +30,6 @@ from playwright.sync_api import Page, Playwright, sync_playwright
 from amazon_product_parser import AmazonProductParser
 from product_data import ProductData
 from unified_form_filler import UnifiedFormFiller
-from ai_category_validator import AICategoryValidator
 from csv_logger import write_unreasonable_category_to_csv, write_processing_exception_to_csv, csv_logger
 from client_authorization import (
     ClientAuthorizationError,
@@ -38,6 +37,14 @@ from client_authorization import (
     logout_client_authorization,
 )
 from playwright_env import configure_playwright_browsers_path
+
+# AI功能 - 延迟导入，可选依赖
+try:
+    from ai_category_validator import AICategoryValidator
+    AI_FEATURES_AVAILABLE = True
+except ImportError:
+    AI_FEATURES_AVAILABLE = False
+    AICategoryValidator = None  # type: ignore
 
 
 # 登录信息
@@ -1641,89 +1648,93 @@ def fill_edit_form_enhanced(edit_page: Page, product_data: ProductData, manual_m
                     with open(config_path, 'r', encoding='utf-8') as f:
                         config = json.load(f)
                         ai_config = config.get('ai_validator', {})
-                
                 # 检查是否启用AI验证
                 if ai_config and ai_config.get('enabled', False) and ai_config.get('api_key') != 'your-api-key-here':
-                    # 初始化AI验证器
-                    ai_validator = AICategoryValidator(
-                        api_base_url=ai_config.get('api_base_url', 'https://api.openai.com/v1'),
-                        api_key=ai_config.get('api_key'),
-                        model_name=ai_config.get('model_name', 'gpt-3.5-turbo'),
-                        timeout=ai_config.get('timeout', 30)
-                    )
-                    
-                    # 准备验证数据
-                    title = getattr(product_data, 'title', '未知标题')
-                    features = []
-                    
-                    # 从details字典中收集关键特征
-                    if hasattr(product_data, 'details') and product_data.details:
-                        # 收集常见的产品特征
-                        feature_keys = ['Brand', 'Color', 'Material', 'Style', 'Special Feature', 
-                                       'Shape', 'Pattern', 'Theme', 'Finish Type']
-                        for key in feature_keys:
-                            if key in product_data.details and product_data.details[key]:
-                                features.append(f"{key}: {product_data.details[key]}")
-                        
-                        # 添加产品尺寸信息
-                        if 'Product Dimensions' in product_data.details:
-                            features.append(f"尺寸: {product_data.details['Product Dimensions']}")
-                        
-                        # 添加重量信息
-                        if 'Item Weight' in product_data.details:
-                            features.append(f"重量: {product_data.details['Item Weight']}")
-                    
-                    print(f"🤖 正在进行AI分类验证...")
-                    print(f"📝 产品标题: {title[:50]}...")
-                    print(f"🔍 关键特征: {len(features)}个")
-                    
-                    # 执行AI验证
-                    is_reasonable, reason, suggested_category = ai_validator.validate_category(
-                        title=title,
-                        key_features=features,
-                        current_category=category_name
-                    )
-                    
-                    print(f"🎯 AI验证结果: {'✅ 分类合理' if is_reasonable else '⚠️ 分类可能不准确'}")
-                    print(f"📊 分析原因: {reason}")
-                    
-                    if not is_reasonable and suggested_category:
-                        print(f"💡 AI建议分类: {suggested_category}")
-                        
-                        # 获取商品链接用于记录
-                        try:
-                            web_url = edit_page.locator("input[name='sourceUrl']").input_value() or "未知链接"
-                        except:
-                            web_url = "未知链接"
-                        
-                        # 将不合理的分类记录到CSV文件
-                        csv_result = write_unreasonable_category_to_csv(
-                            product_url=web_url,
-                            title=title,
-                            current_category=category_name,
-                            ai_reason=reason,
-                            suggested_category=suggested_category
+                    # 检查AI功能是否可用
+                    if not AI_FEATURES_AVAILABLE:
+                        print("⚠️ AI功能不可用（openai库未安装），跳过AI分类验证")
+                    else:
+                        # 初始化AI验证器
+                        ai_validator = AICategoryValidator(
+                            api_base_url=ai_config.get('api_base_url', 'https://api.openai.com/v1'),
+                            api_key=ai_config.get('api_key'),
+                            model_name=ai_config.get('model_name', 'gpt-3.5-turbo'),
+                            timeout=ai_config.get('timeout', 30)
                         )
                         
-                        if csv_result:
-                            print(f"📁 已记录到审核文件: {os.path.basename(csv_result)}")
+                        # 准备验证数据
+                        title = getattr(product_data, 'title', '未知标题')
+                        features = []
+                        
+                        # 从 details字典中收集关键特征
+                        if hasattr(product_data, 'details') and product_data.details:
+                            # 收集常见的产品特征
+                            feature_keys = ['Brand', 'Color', 'Material', 'Style', 'Special Feature', 
+                                           'Shape', 'Pattern', 'Theme', 'Finish Type']
+                            for key in feature_keys:
+                                if key in product_data.details and product_data.details[key]:
+                                    features.append(f"{key}: {product_data.details[key]}")
+                            
+                            # 添加产品尺寸信息
+                            if 'Product Dimensions' in product_data.details:
+                                features.append(f"尺寸: {product_data.details['Product Dimensions']}")
+                            
+                            # 添加重量信息
+                            if 'Item Weight' in product_data.details:
+                                features.append(f"重量: {product_data.details['Item Weight']}")
+                        
+                        print(f"🤖 正在进行AI分类验证...")
+                        print(f"📝 产品标题: {title[:50]}...")
+                        print(f"🔍 关键特征: {len(features)}个")
+                        
+                        # 执行AI验证
+                        is_reasonable, reason, suggested_category = ai_validator.validate_category(
+                            title=title,
+                            key_features=features,
+                            current_category=category_name
+                        )
+                        
+                        print(f"🎯 AI验证结果: {'✅ 分类合理' if is_reasonable else '⚠️ 分类可能不准确'}")
+                        print(f"📊 分析原因: {reason}")
+                        
+                        if not is_reasonable and suggested_category:
+                            print(f"💡 AI建议分类: {suggested_category}")
+                            
+                            # 获取商品链接用于记录
+                            try:
+                                web_url = edit_page.locator("input[name='sourceUrl']").input_value() or "未知链接"
+                            except:
+                                web_url = "未知链接"
+                            
+                            # 将不合理的分类记录到CSV文件
+                            csv_result = write_unreasonable_category_to_csv(
+                                product_url=web_url,
+                                title=title,
+                                current_category=category_name,
+                                ai_reason=reason,
+                                suggested_category=suggested_category
+                            )
+                            
+                            if csv_result:
+                                print(f"📁 已记录到审核文件: {os.path.basename(csv_result)}")
 
-                    elif not is_reasonable:
-                        # 没有建议分类但分类不合理的情况
-                        try:
-                            web_url = edit_page.locator("input[name='sourceUrl']").input_value() or "未知链接"
-                        except:
-                            web_url = "未知链接"
-                        
-                        csv_result = write_unreasonable_category_to_csv(
-                            product_url=web_url,
-                            title=title,
-                            current_category=category_name,
-                            ai_reason=reason,
-                            suggested_category=None
-                        )
-                        
-                        if csv_result:
+                        elif not is_reasonable:
+                            # 没有建议分类但分类不合理的情况
+                            try:
+                                web_url = edit_page.locator("input[name='sourceUrl']").input_value() or "未知链接"
+                            except:
+                                web_url = "未知链接"
+                            
+                            csv_result = write_unreasonable_category_to_csv(
+                                product_url=web_url,
+                                title=title,
+                                current_category=category_name,
+                                ai_reason=reason,
+                                suggested_category=None
+                            )
+                            
+                            if csv_result:
+                                print(f"📁 已记录到审核文件: {os.path.basename(csv_result)}")
                             print(f"📁 已记录到审核文件: {os.path.basename(csv_result)}")
                 
                 else:

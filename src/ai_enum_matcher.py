@@ -6,7 +6,13 @@ AI枚举值匹配器
 import os
 import json
 from typing import Dict, List, Any, Optional, Tuple
-import openai
+
+try:
+    import openai
+    OPENAI_AVAILABLE = True
+except ImportError:
+    OPENAI_AVAILABLE = False
+    openai = None  # type: ignore
 
 class AIEnumMatcher:
     """AI驱动的枚举值匹配器"""
@@ -16,6 +22,10 @@ class AIEnumMatcher:
         self.api_key = os.getenv('OPENAI_API_KEY')
         self.client = None
         self.enabled = False
+        
+        if not OPENAI_AVAILABLE:
+            print("⚠️ openai库未安装，AI枚举匹配功能将被禁用")
+            return
         
         if self.api_key:
             try:

@@ -11,8 +11,10 @@ import logging
 
 try:
     from openai import OpenAI
+    OPENAI_AVAILABLE = True
 except ImportError:
-    raise ImportError("请安装openai库: pip install openai")
+    OPENAI_AVAILABLE = False
+    OpenAI = None  # type: ignore
 
 class AICategoryValidator:
     """
@@ -33,6 +35,12 @@ class AICategoryValidator:
             model_name: 模型名称
             timeout: 请求超时时间(秒)
         """
+        if not OPENAI_AVAILABLE:
+            raise ImportError(
+                "AI功能需要openai库。请安装: pip install openai\n"
+                "或在打包时确保openai被正确包含。"
+            )
+        
         self.api_base_url = api_base_url.rstrip('/')
         self.api_key = api_key
         self.model_name = model_name

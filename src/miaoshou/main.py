@@ -16,7 +16,6 @@
 
 import os
 import sys
-import xlsxwriter
 import time
 from pathlib import Path
 from datetime import datetime
@@ -652,6 +651,8 @@ class MiaoshouERPCollector:
         print("📤 导出数据到Excel...")
         
         try:
+            # 延迟导入xlsxwriter，避免打包时的依赖问题
+            import xlsxwriter
             # 确定输出目录
             output_path: Path
             if output_dir is None:

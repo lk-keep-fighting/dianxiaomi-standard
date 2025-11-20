@@ -104,10 +104,18 @@ def build_executable(app_name: str) -> None:
         "playwright.sync_api._generated",
         "--collect-all",
         "playwright",
-        # Excel 导出库收集
+        # Excel 导出库收集（多种方式确保打包）
         "--hidden-import",
         "xlsxwriter",
+        "--hidden-import",
+        "xlsxwriter.workbook",
+        "--hidden-import",
+        "xlsxwriter.worksheet",
+        "--hidden-import",
+        "xlsxwriter.format",
         "--collect-all",
+        "xlsxwriter",
+        "--copy-metadata",
         "xlsxwriter",
         # 将 src 放入模块搜索路径
         "--paths",

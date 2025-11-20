@@ -22,7 +22,7 @@ from typing import Dict, Iterable, List, Optional, Tuple
 PROJECT_ROOT = Path(__file__).resolve().parents[1]
 SRC_DIR = PROJECT_ROOT / "src"
 EMBEDDED_ENV_PATH = SRC_DIR / "_embedded_env.py"
-DEFAULT_APP_NAME = "digital-chief"
+DEFAULT_APP_NAME = "店小秘自动化-v1"
 PLAYWRIGHT_BROWSERS_DIR = PROJECT_ROOT / "build" / "playwright-browsers"
 PLAYWRIGHT_BROWSERS_TARGET = "playwright-browsers"
 
@@ -174,6 +174,12 @@ def build_executable(args: argparse.Namespace, env_values: Dict[str, str]) -> No
         str(build_dir),
         "--hidden-import",
         "playwright.sync_api._generated",
+        "--hidden-import",
+        "openai",
+        "--hidden-import",
+        "openai.types",
+        "--hidden-import",
+        "openai.types.chat",
         "--collect-all",
         "playwright",
         "--collect-all",
@@ -243,7 +249,7 @@ def main(argv: Optional[List[str]] = None) -> int:
     parser.add_argument(
         "--name",
         default=DEFAULT_APP_NAME,
-        help="生成的可执行文件名称（默认: digital-chief）",
+        help="生成的可执行文件名称（默认: "+DEFAULT_APP_NAME+"）",
     )
     parser.add_argument(
         "--keep-embedded",
