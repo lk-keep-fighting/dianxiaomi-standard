@@ -653,10 +653,18 @@ class MiaoshouERPCollector:
         try:
             # 延迟导入xlsxwriter，避免打包时的依赖问题
             import xlsxwriter
+            
             # 确定输出目录
             output_path: Path
             if output_dir is None:
-                output_path = BASE_DIR / "output"
+                # 打包后：获取exe所在目录；开发时：使用output目录
+                if getattr(sys, 'frozen', False):
+                    # 打包后，使用exe所在目录
+                    exe_dir = Path(sys.executable).parent
+                    output_path = exe_dir
+                else:
+                    # 开发模式，使用源码目录下的output
+                    output_path = BASE_DIR / "output"
             else:
                 output_path = Path(output_dir) if isinstance(output_dir, str) else output_dir
             
