@@ -70,16 +70,21 @@ class MiaoshouERPCollector:
         self.playwright = sync_playwright().start()
         self.browser = self.playwright.chromium.launch(
             headless=self.headless,
-            slow_mo=100 if self.debug else 0
+            slow_mo=100 if self.debug else 0,
+            args=[
+                '--start-maximized',  # 启动时最大化
+            ]
         )
         
         # 尝试从文件恢复登录状态
         if self.auth_state_file.exists():
             try:
-                print("🔑 发现乊存登录状态，正在恢复...")
+                print("🔑 发现已存登录状态，正在恢复...")
                 self.context = self.browser.new_context(
                     storage_state=str(self.auth_state_file),
                     viewport={'width': 1920, 'height': 1080},
+                    device_scale_factor=1,  # 防止页面缩放
+                    no_viewport=False,  # 使用指定的viewport
                     user_agent='Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36'
                 )
                 print("✅ 登录状态恢复成功")
@@ -88,12 +93,16 @@ class MiaoshouERPCollector:
                 print("📝 将创建新的浏览器上下文")
                 self.context = self.browser.new_context(
                     viewport={'width': 1920, 'height': 1080},
+                    device_scale_factor=1,  # 防止页面缩放
+                    no_viewport=False,  # 使用指定的viewport
                     user_agent='Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36'
                 )
         else:
             print("🆕 未找到保存的登录状态，将创建新上下文")
             self.context = self.browser.new_context(
                 viewport={'width': 1920, 'height': 1080},
+                device_scale_factor=1,  # 防止页面缩放
+                no_viewport=False,  # 使用指定的viewport
                 user_agent='Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36'
             )
         
@@ -771,17 +780,51 @@ class MiaoshouERPCollector:
             # 支持多次手动触发采集
             total_collected = 0
             while True:
-                print("\n📋 当前页面筛选条件就绪后：")
-                user_input = input("按 Enter 开始采集；输入 q 导出并结束；输入 n 清空已采集数据：").strip().lower()
+                print("\n" + "="*60)
+                print("📋 操作菜单：")
+                print("  [回车] - 开始采集当前页面数据")
+                print("  [e]   - 导出 Excel 文件（不清空数据）")
+                print("  [n]   - 清空已采集数据")
+                print("  [q]   - 退出程序")
+                print(f"📊 当前累计: {len(self.recipient_data)} 条")
+                print("="*60)
+                user_input = input("请选择操作：").strip().lower()
                 
                 if user_input == 'q':
+                    print("👋 退出程序...")
                     break
-                if user_input == 'n':
-                    self.recipient_data = []
-                    total_collected = 0
-                    print("🧹 已清空已采集数据")
+                    
+                elif user_input == 'e':
+                    # 导出 Excel
+                    if len(self.recipient_data) == 0:
+                        print("⚠️ 没有数据可导出，请先采集数据")
+                        continue
+                    
+                    export_path = self.export_to_excel()
+                    if export_path:
+                        print("\n" + "="*60)
+                        print("✅ 导出成功！")
+                        print("="*60)
+                        print(f"📊 导出数量: {len(self.recipient_data)} 条")
+                        print(f"📁 文件位置: {export_path}")
+                        print("="*60)
+                        print("💡 可以继续采集或再次导出")
+                    continue
+                    
+                elif user_input == 'n':
+                    if len(self.recipient_data) == 0:
+                        print("🚨 当前没有数据")
+                    else:
+                        confirm = input(f"⚠️ 确认清空 {len(self.recipient_data)} 条数据？(y/n): ").strip().lower()
+                        if confirm == 'y':
+                            self.recipient_data = []
+                            total_collected = 0
+                            print("🧹 已清空所有采集数据")
+                        else:
+                            print("❌ 取消清空操作")
                     continue
                 
+                # 默认（回车或其他输入）- 执行采集
                 # 验证是否在订单页面
                 if not self.verify_order_page():
                     print("⚠️ 页面验证失败，但将继续尝试...")
@@ -799,22 +842,25 @@ class MiaoshouERPCollector:
                 collected_count = self.collect_all_recipients()
                 total_collected += collected_count
                 
-                print(f"\n📊 本次采集: {collected_count} 条，累计: {total_collected} 条")
+                print(f"\n📊 本次采集: {collected_count} 条，累计: {len(self.recipient_data)} 条")
                 # 循环继续，等待用户下一次手动触发
             
-            # 导出累计数据（Excel）
-            export_path = self.export_to_excel()
+            # 退出时检查是否有未导出的数据
+            if len(self.recipient_data) > 0:
+                print(f"\n📊 当前还有 {len(self.recipient_data)} 条未导出的数据")
+                export_confirm = input("是否导出？(y/n): ").strip().lower()
+                if export_confirm == 'y':
+                    export_path = self.export_to_excel()
+                    if export_path:
+                        print("\n" + "="*60)
+                        print("✅ 导出成功！")
+                        print("="*60)
+                        print(f"📊 导出数量: {len(self.recipient_data)} 条")
+                        print(f"📁 文件位置: {export_path}")
+                        print("="*60)
             
-            if export_path:
-                print("\n" + "="*60)
-                print("✅ 采集任务完成！")
-                print("="*60)
-                print(f"📊 累计采集数量: {len(self.recipient_data)}")
-                print(f"📁 文件位置: {export_path}")
-                print("="*60)
-                return True
-            else:
-                return False                
+            print("\n👋 程序已退出")
+            return True                
         except Exception as e:
             print(f"\n❌ 执行过程中发生错误: {e}")
             if self.debug:
