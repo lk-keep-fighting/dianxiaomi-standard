@@ -72,7 +72,8 @@ class MiaoshouERPCollector:
             headless=self.headless,
             slow_mo=100 if self.debug else 0,
             args=[
-                '--start-maximized',  # 启动时最大化
+                '--disable-blink-features=AutomationControlled',  # 隐藏自动化标识
+                '--start-maximized',  # 启动时窗口最大化
             ]
         )
         
@@ -82,9 +83,7 @@ class MiaoshouERPCollector:
                 print("🔑 发现已存登录状态，正在恢复...")
                 self.context = self.browser.new_context(
                     storage_state=str(self.auth_state_file),
-                    viewport={'width': 1920, 'height': 1080},
-                    device_scale_factor=1,  # 防止页面缩放
-                    no_viewport=False,  # 使用指定的viewport
+                    no_viewport=True,  # 使用浏览器窗口大小，内容自适应
                     user_agent='Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36'
                 )
                 print("✅ 登录状态恢复成功")
@@ -92,17 +91,13 @@ class MiaoshouERPCollector:
                 print(f"⚠️ 恢复登录状态失败: {e}")
                 print("📝 将创建新的浏览器上下文")
                 self.context = self.browser.new_context(
-                    viewport={'width': 1920, 'height': 1080},
-                    device_scale_factor=1,  # 防止页面缩放
-                    no_viewport=False,  # 使用指定的viewport
+                    no_viewport=True,  # 使用浏览器窗口大小，内容自适应
                     user_agent='Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36'
                 )
         else:
             print("🆕 未找到保存的登录状态，将创建新上下文")
             self.context = self.browser.new_context(
-                viewport={'width': 1920, 'height': 1080},
-                device_scale_factor=1,  # 防止页面缩放
-                no_viewport=False,  # 使用指定的viewport
+                no_viewport=True,  # 使用浏览器窗口大小，内容自适应
                 user_agent='Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36'
             )
         
@@ -427,27 +422,85 @@ class MiaoshouERPCollector:
             return False
     
     def scroll_to_load_data(self) -> None:
-        """滚动页面加载数据（节点5-6）"""
+        """滚动页面加载数据（节点5-6）- 优化为逼步滚动加载虚拟表格"""
         if not self.page:
             return
             
         print("📜 滚动页面加载所有订单数据...")
         
         try:
-            # 平滑滚动到页面底部
+            # 获取表格容器
+            table_body = self.page.locator(".package-virtual-table__body").first
+            
+            if table_body.count() == 0:
+                print("⚠️ 未找到表格容器")
+                return
+            
+            # 逐步滚动加载所有数据
+            last_row_count = 0
+            stable_count = 0
+            max_iterations = 50  # 最多滚动50次
+            
+            for iteration in range(max_iterations):
+                # 获取当前渲染的行数
+                current_row_count = self.page.locator(".package-virtual-table__row").count()
+                
+                if self.debug:
+                    print(f"   迭代 {iteration + 1}: 当前渲染 {current_row_count} 行")
+                
+                # 如果行数没有变化，记录稳定次数
+                if current_row_count == last_row_count:
+                    stable_count += 1
+                    # 连续3次行数不变，认为已加载完成
+                    if stable_count >= 3:
+                        print(f"✅ 滚动加载完成，共渲染 {current_row_count} 行")
+                        break
+                else:
+                    stable_count = 0
+                    last_row_count = current_row_count
+                
+                # 滚动到最后一个可见的订单行
+                try:
+                    last_visible_row = self.page.locator(".package-virtual-table__row").last
+                    last_visible_row.scroll_into_view_if_needed(timeout=2000)
+                except:
+                    # 如果滚动失败，尝试直接滚动容器
+                    self.page.evaluate("""
+                        () => {
+                            const tableBody = document.querySelector('.package-virtual-table__body');
+                            if (tableBody) {
+                                tableBody.scrollTop = tableBody.scrollHeight;
+                            }
+                        }
+                    """)
+                
+                # 等待虚拟滚动渲染
+                self.page.wait_for_timeout(500)
+            
+            # 最终滚动到顶部，确保所有数据都被加载
             self.page.evaluate("""
                 () => {
-                    const scrollHeight = document.body.scrollHeight;
                     window.scrollTo({
-                        top: scrollHeight,
+                        top: 0,
                         behavior: 'smooth'
                     });
                 }
             """)
+            self.page.wait_for_timeout(500)
             
-            # 等待数据加载
-            self.page.wait_for_timeout(2000)
-            print("✅ 滚动加载完成")
+            # 再次滚动到底部，确保所有数据都在DOM中
+            self.page.evaluate("""
+                () => {
+                    const tableBody = document.querySelector('.package-virtual-table__body');
+                    if (tableBody) {
+                        tableBody.scrollTop = tableBody.scrollHeight;
+                    }
+                }
+            """)
+            self.page.wait_for_timeout(1000)
+            
+            final_count = self.page.locator(".package-virtual-table__row").count()
+            print(f"✅ 滚动加载完成，最终渲染 {final_count} 行")
             
         except Exception as e:
             print(f"⚠️ 滚动加载时出现警告: {e}")
@@ -600,54 +653,197 @@ class MiaoshouERPCollector:
     
     def collect_all_recipients(self) -> int:
         """
-        循环采集所有订单的收件人信息（节点8-13）
+        自动点击搜索按钮并监听API请求获取订单数据（节点8-13）
         
         Returns:
             成功采集的数量
         """
-        print("🔄 开始循环采集订单收件人信息...")
+        print("🔍 自动点击搜索按钮并监听 API 请求...")
         
-        # 获取订单总数
-        total_orders = self.get_order_rows()
-        
-        if total_orders == 0:
-            print("⚠️ 没有检测到订单")
+        if not self.page:
+            print("❌ 浏览器未初始化")
             return 0
         
-        # 限制最大循环次数
-        max_loop = min(total_orders, 999)
-        success_count = 0
+        # 存储拦截到的响应数据
+        captured_data = {'packageList': None, 'captured': False}
         
-        # 循环遍历每个订单
-        for i in range(max_loop):
-            if self.debug:
-                print(f"\n📝 处理订单 {i + 1}/{max_loop}...")
-            
-            # 提取收件人信息
-            recipient_info = self.extract_recipient_info(i)
-            
-            if recipient_info:
-                # 节点13: 保存数据
-                self.recipient_data.append(recipient_info)
-                success_count += 1
+        def handle_response(response):
+            """HTTP 响应处理器"""
+            try:
+                url = response.url
                 
-                if self.debug:
-                    print(f"   ✅ 姓名: {recipient_info.get('收件人姓名','')}")
-                    print(f"      地区: {recipient_info.get('收件地区','')}")
-                    print(f"      电话: {recipient_info.get('联系电话','')}")
-                    print(f"      省州/邮编: {recipient_info.get('省州/邮编', recipient_info.get('省州邮编',''))}")
-                    if recipient_info.get('买家留言'):
-                        print(f"      买家留言: {recipient_info['买家留言']}")
-            else:
-                if self.debug:
-                    print(f"   ⚠️ 跳过第 {i + 1} 个订单（数据提取失败）")
-            
-            # 小延迟，避免过快操作
-            if i < max_loop - 1 and self.page:
-                self.page.wait_for_timeout(100)
+                # 检查是否是 searchOrderPackageList 接口
+                if 'searchOrderPackageList' in url:
+                    print(f"   ✅ 检测到 searchOrderPackageList 接口")
+                    print(f"   [INFO] 响应状态: {response.status}")
+                    
+                    if response.status == 200:
+                        try:
+                            print(f"   [INFO] 开始解析JSON...")
+                            json_data = response.json()
+                            print(f"   [INFO] JSON解析成功")
+                            
+                            if json_data:
+                                print(f"   [INFO] 响应数据键: {list(json_data.keys())}")
+                                
+                                # 尝试从 data 字段获取（新版本API）
+                                if 'data' in json_data and isinstance(json_data['data'], dict) and 'packageList' in json_data['data']:
+                                    package_list = json_data['data']['packageList']
+                                    print(f"   [INFO] 从 data.packageList 获取数据")
+                                # 直接从根级别获取（旧版本API）
+                                elif 'packageList' in json_data:
+                                    package_list = json_data['packageList']
+                                    print(f"   [INFO] 直接从根级别获取 packageList")
+                                else:
+                                    print(f"   ⚠️ 响应中没有找到 packageList 字段")
+                                    return
+                                
+                                print(f"   [INFO] packageList类型: {type(package_list)}")
+                                print(f"   [INFO] packageList长度: {len(package_list) if isinstance(package_list, list) else 'N/A'}")
+                                
+                                captured_data['packageList'] = package_list
+                                captured_data['captured'] = True
+                                print(f"   ✅ 成功拦截 API 响应，包含 {len(package_list)} 个订单")
+                            else:
+                                print(f"   ⚠️ json_data为空")
+                                
+                        except Exception as e:
+                            print(f"   ❌ 解析 JSON 失败: {e}")
+                            import traceback
+                            traceback.print_exc()
+                    else:
+                        print(f"   ⚠️ API 响应状态码不是200: {response.status}")
+            except Exception as e:
+                print(f"   ❌ 处理响应失败: {e}")
+                import traceback
+                traceback.print_exc()
         
-        print(f"\n✅ 采集完成，成功采集 {success_count}/{max_loop} 个订单")
-        return success_count
+        try:
+            # 先注册响应监听器（在点击按钮之前）
+            print("📡 注册API响应监听器...")
+            self.page.on("response", handle_response)
+            
+            # 等待一小段时间确保监听器注册完成
+            self.page.wait_for_timeout(500)
+            
+            # 查找搜索按钮
+            search_button_selectors = [
+                "button.J_queryFormSearch",
+                "button[type='submit'].J_queryFormSearch",
+                "button.jx-button--primary:has-text('搜索')",
+                "button:has-text('搜索')",
+            ]
+            
+            search_button = None
+            for selector in search_button_selectors:
+                try:
+                    btn = self.page.locator(selector).first
+                    if btn.count() > 0:
+                        search_button = btn
+                        print(f"   ✅ 找到搜索按钮: {selector}")
+                        break
+                except:
+                    continue
+            
+            if not search_button:
+                print("❌ 未找到搜索按钮，请确认页面已加载")
+                return 0
+            
+            # 点击搜索按钮
+            print("👆 正在点击搜索按钮...")
+            search_button.click()
+            print("   ✅ 搜索按钮已点击，等待API响应...")
+            
+            # 等待API响应（最多等待30秒）
+            max_wait_time = 30
+            check_interval = 0.5
+            elapsed_time = 0
+            
+            while elapsed_time < max_wait_time:
+                if captured_data['captured']:
+                    break
+                self.page.wait_for_timeout(int(check_interval * 1000))
+                elapsed_time += check_interval
+                
+                # 每5秒显示一次进度
+                if int(elapsed_time) % 5 == 0 and int(elapsed_time) > 0:
+                    print(f"   ⏳ 等待API响应... ({int(elapsed_time)}/{max_wait_time}秒)")
+            
+            if not captured_data['captured']:
+                print(f"\n❌ 超时：未拦截到 searchOrderPackageList API 数据")
+                print("💡 提示：")
+                print("   1. 请确认页面已正确加载")
+                print("   2. 请检查是否有网络问题")
+                print("   3. 尝试手动点击搜索按钮看是否有响应")
+                return 0
+            
+            # 解析数据
+            print(f"\n📦 开始解析 {len(captured_data['packageList'])} 个订单数据...")
+            success_count = 0
+            
+            for package in captured_data['packageList']:
+                try:
+                    # 从 consigneeInfo 获取收件人信息
+                    consignee_info = package.get('consigneeInfo', {})
+                    
+                    if not consignee_info:
+                        if self.debug:
+                            print(f"   ⚠️ 订单没有 consigneeInfo 字段，跳过")
+                        continue
+                    
+                    # 提取收件人信息
+                    recipient_data = {
+                        '收件地区': consignee_info.get('countryName', ''),
+                        '收件人姓名': consignee_info.get('name', ''),
+                        '联系电话': consignee_info.get('phone', '') or consignee_info.get('phone1', ''),
+                        '省州/邮编': f"{consignee_info.get('state', '')} / {consignee_info.get('zipcode', '')}".strip(' /'),
+                        '买家留言': '',  # consigneeInfo 中没有买家留言
+                        '完整信息': f"""国家: {consignee_info.get('countryName', '')}
+姓名: {consignee_info.get('name', '')}
+电话: {consignee_info.get('phone', '') or consignee_info.get('phone1', '')}
+省/州: {consignee_info.get('state', '')}
+城市: {consignee_info.get('city', '')}
+区/镇: {consignee_info.get('district', '')} {consignee_info.get('town', '')}
+邮编: {consignee_info.get('zipcode', '')}
+地址1: {consignee_info.get('address1', '')}
+地址2: {consignee_info.get('address2', '')}
+完整地址: {consignee_info.get('fullAddress', '')}
+物流公司: {consignee_info.get('logisticsCompany', '')}"""
+                    }
+                    
+                    self.recipient_data.append(recipient_data)
+                    success_count += 1
+                    
+                    if self.debug:
+                        print(f"\n   ✅ 订单 {success_count}:")
+                        print(f"      姓名: {recipient_data['收件人姓名']}")
+                        print(f"      地区: {recipient_data['收件地区']}")
+                        print(f"      电话: {recipient_data['联系电话']}")
+                        print(f"      省州/邮编: {recipient_data['省州/邮编']}")
+                            
+                except Exception as e:
+                    if self.debug:
+                        print(f"   ⚠️ 解析订单数据失败: {e}")
+                        import traceback
+                        traceback.print_exc()
+            
+            print(f"\n✅ 采集完成，成功采集 {success_count} 个订单")
+            return success_count
+            
+        except Exception as e:
+            print(f"\n❌ 采集过程出错: {e}")
+            if self.debug:
+                import traceback
+                traceback.print_exc()
+            return 0
+            
+        finally:
+            # 移除监听器
+            try:
+                self.page.remove_listener("response", handle_response)
+                print("   🔌 已移除API监听器")
+            except:
+                pass
     
     def export_to_excel(self, output_dir: Optional[Union[str, Path]] = None) -> Optional[str]:
         """
@@ -782,8 +978,8 @@ class MiaoshouERPCollector:
             while True:
                 print("\n" + "="*60)
                 print("📋 操作菜单：")
-                print("  [回车] - 开始采集当前页面数据")
-                print("  [e]   - 导出 Excel 文件（不清空数据）")
+                print("  [回车] - 开始采集（程序自动点击搜索按钮）")
+                print("  [e]   - 导出 Excel 文件（自动清空缓存）")
                 print("  [n]   - 清空已采集数据")
                 print("  [q]   - 退出程序")
                 print(f"📊 当前累计: {len(self.recipient_data)} 条")
@@ -808,7 +1004,11 @@ class MiaoshouERPCollector:
                         print(f"📊 导出数量: {len(self.recipient_data)} 条")
                         print(f"📁 文件位置: {export_path}")
                         print("="*60)
-                        print("💡 可以继续采集或再次导出")
+                        
+                        # 导出成功后自动清空缓存
+                        self.recipient_data = []
+                        total_collected = 0
+                        print("🧹 已自动清空采集数据，可以开始新一轮采集")
                     continue
                     
                 elif user_input == 'n':
@@ -825,20 +1025,7 @@ class MiaoshouERPCollector:
                     continue
                 
                 # 默认（回车或其他输入）- 执行采集
-                # 验证是否在订单页面
-                if not self.verify_order_page():
-                    print("⚠️ 页面验证失败，但将继续尝试...")
-                
-                # 节点4: 等待表格加载
-                if not self.wait_for_table_load():
-                    # 节点15: 显示错误提示
-                    self.show_error_notification()
-                    continue  # 本轮跳过，等待用户调整后再试
-                
-                # 节点5-6: 滚动加载数据
-                self.scroll_to_load_data()
-                
-                # 节点7-13: 采集所有订单数据
+                # 节点7-13: 监听API获取订单数据
                 collected_count = self.collect_all_recipients()
                 total_collected += collected_count
                 
@@ -858,6 +1045,8 @@ class MiaoshouERPCollector:
                         print(f"📊 导出数量: {len(self.recipient_data)} 条")
                         print(f"📁 文件位置: {export_path}")
                         print("="*60)
+                else:
+                    print("⚠️ 数据未导出，将直接退出")
             
             print("\n👋 程序已退出")
             return True                
