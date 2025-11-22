@@ -109,15 +109,17 @@ class MiaoshouERPCollector:
         # 启动API实时监听器
         self.start_api_listener()
         
-        # 自动打开订单页面
+        # 自动打开订单页面（优化加载策略）
         try:
             print(f"🌐 正在打开订单页面: {self.erp_url}")
-            self.page.goto(self.erp_url, timeout=self.timeout_long)
-            self.page.wait_for_load_state("networkidle", timeout=self.timeout_long)
+            # 使用 domcontentloaded 而不是 load，更快
+            self.page.goto(self.erp_url, wait_until="domcontentloaded", timeout=60000)
             print("✅ 订单页面打开成功")
+            # 不等待 networkidle，让页面在后台继续加载
         except Exception as e:
             print(f"⚠️ 打开订单页面失败: {e}")
-            print("📌 请手动导航到订单页面")
+            print("📌 页面可能仍在加载中，程序将继续运行")
+            print("💡 如果需要登录，请在浏览器中手动登录")
         
         print("✅ 浏览器启动成功")
     
