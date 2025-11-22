@@ -46,8 +46,10 @@ class MiaoshouERPCollector:
         self.browser: Optional[Browser] = None
         self.context: Optional[BrowserContext] = None
         self.page: Optional[Page] = None
-        self.recipient_data: List[Dict[str, str]] = []
+        self.recipient_data: List[Dict[str, str]] = []  # 存储已导出的数据（历史记录）
+        self.latest_api_data: Optional[List] = None  # 临时变量，存储最近一次API返回的packageList
         self.playwright = None
+        self.api_listener_active = False  # API监听器是否激活
         
         # 配置
         self.erp_url = "https://erp.91miaoshou.com/order/package/index?appPackageTab=waitProcess"
@@ -103,6 +105,9 @@ class MiaoshouERPCollector:
         
         # 创建页面并自动打开订单页面
         self.page = self.context.new_page()
+        
+        # 启动API实时监听器
+        self.start_api_listener()
         
         # 自动打开订单页面
         try:
@@ -651,8 +656,233 @@ class MiaoshouERPCollector:
                 print(f"⚠️ 提取第 {row_index + 1} 个订单信息失败: {e}")
             return None
     
+    def start_api_listener(self) -> None:
+        """启动API监听器，实时捕获searchOrderPackageList接口数据"""
+        if not self.page or self.api_listener_active:
+            return
+        
+        def handle_response(response):
+            """HTTP 响应处理器 - 实时捕获API数据"""
+            try:
+                url = response.url
+                
+                # 检查是否是 searchOrderPackageList 接口
+                if 'searchOrderPackageList' in url:
+                    if response.status == 200:
+                        try:
+                            json_data = response.json()
+                            
+                            if json_data:
+                                # 根据记忆，API响应直接在根级别，没有data包装层
+                                if 'packageList' in json_data:
+                                    package_list = json_data['packageList']
+                                    # 保存到临时变量（永远保存最新的）
+                                    self.latest_api_data = package_list
+                                    print(f"\n📡 [实时监听] 捕获到 searchOrderPackageList 数据: {len(package_list)} 条")
+                                    if self.debug:
+                                        print(f"   [DEBUG] API URL: {url}")
+                                        print(f"   [DEBUG] 响应键: {list(json_data.keys())}")
+                                
+                        except Exception as e:
+                            if self.debug:
+                                print(f"   [DEBUG] 解析API响应失败: {e}")
+            except Exception as e:
+                if self.debug:
+                    print(f"   [DEBUG] 处理响应失败: {e}")
+        
+        # 注册API监听器
+        self.page.on("response", handle_response)
+        self.api_listener_active = True
+        print("📡 API实时监听器已启动，将自动捕获 searchOrderPackageList 接口返回的数据")
+    
+    def stop_api_listener(self) -> None:
+        """停止API监听器"""
+        if self.page and self.api_listener_active:
+            try:
+                # Playwright不支持移除所有监听器，只能标记为不活跃
+                self.api_listener_active = False
+                print("🔌 API监听器已停止")
+            except:
+                pass
+    
+    def export_latest_data_to_excel(self, output_dir: Optional[Union[str, Path]] = None) -> Optional[str]:
+        """
+        导出最新捕获的API数据到Excel文件
+        
+        Args:
+            output_dir: 输出目录路径，为None时使用默认路径
+        
+        Returns:
+            导出的文件路径，失败返回None
+        """
+        if not self.latest_api_data:
+            print("⚠️ 没有可导出的数据")
+            print("💡 提示: 程序正在后台监听 searchOrderPackageList 接口")
+            print("   请在浏览器页面上进行任何触发搜索的操作（点击搜索按钮、切换分页、筛选等）")
+            print("   只要后台发起 searchOrderPackageList 请求，数据就会被自动捕获")
+            return None
+        
+        print(f"\n📤 开始导出最新捕获的数据...")
+        print(f"📊 数据量: {len(self.latest_api_data)} 条")
+        
+        try:
+            # 延迟导入xlsxwriter，避免打包时的依赖问题
+            import xlsxwriter
+            
+            # 确定输出目录
+            output_path: Path
+            if output_dir is None:
+                # 打包后：获取exe所在目录；开发时：使用output目录
+                if getattr(sys, 'frozen', False):
+                    # 打包后，使用exe所在目录
+                    exe_dir = Path(sys.executable).parent
+                    output_path = exe_dir
+                else:
+                    # 开发模式，使用源码目录下的output
+                    output_path = BASE_DIR / "output"
+            else:
+                output_path = Path(output_dir) if isinstance(output_dir, str) else output_dir
+            
+            # 确保输出目录存在
+            output_path.mkdir(parents=True, exist_ok=True)
+            
+            # 生成文件名（带时间戳）
+            timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+            filename = f"妙手ERP_收件人信息_{timestamp}.xlsx"
+            output_file = output_path / filename
+            
+            # 创建Excel工作簿
+            workbook = xlsxwriter.Workbook(str(output_file))
+            worksheet = workbook.add_worksheet('收件人信息')
+            
+            # 定义格式
+            header_format = workbook.add_format({
+                'bold': True,
+                'bg_color': '#4472C4',
+                'font_color': 'white',
+                'border': 1,
+                'align': 'center',
+                'valign': 'vcenter'
+            })
+            
+            cell_format = workbook.add_format({
+                'border': 1,
+                'valign': 'top',
+                'text_wrap': True
+            })
+            
+            # 写入表头
+            headers = ['收件地区', '收件人姓名', '联系电话', '省州/邮编', '买家留言', '完整信息']
+            for col_num, header in enumerate(headers):
+                worksheet.write(0, col_num, header, header_format)
+            
+            # 解析并写入数据
+            row_num = 1
+            for package in self.latest_api_data:
+                try:
+                    # 从 consigneeInfo 获取收件人信息
+                    consignee_info = package.get('consigneeInfo', {})
+                    
+                    if not consignee_info:
+                        continue
+                    
+                    # 从 orderInfo 获取买家留言
+                    order_info = package.get('orderInfo', {})
+                    buyer_message = order_info.get('buyerMessage', '') or ''
+                    
+                    # 提取字段
+                    country_name = consignee_info.get('countryName', '')
+                    name = consignee_info.get('name', '')
+                    phone = consignee_info.get('phone', '') or consignee_info.get('phone1', '')
+                    state = consignee_info.get('state', '')
+                    zipcode = consignee_info.get('zipcode', '')
+                    province_zip = f"{state} / {zipcode}" if state or zipcode else ''
+                    
+                    # 构建完整信息
+                    full_info_parts = []
+                    if country_name:
+                        full_info_parts.append(f"国家: {country_name}")
+                    if name:
+                        full_info_parts.append(f"姓名: {name}")
+                    if phone:
+                        full_info_parts.append(f"电话: {phone}")
+                    if state:
+                        full_info_parts.append(f"省/州: {state}")
+                    if consignee_info.get('city'):
+                        full_info_parts.append(f"城市: {consignee_info.get('city')}")
+                    if consignee_info.get('district'):
+                        full_info_parts.append(f"区: {consignee_info.get('district')}")
+                    if consignee_info.get('town'):
+                        full_info_parts.append(f"镇: {consignee_info.get('town')}")
+                    if zipcode:
+                        full_info_parts.append(f"邮编: {zipcode}")
+                    if consignee_info.get('address1'):
+                        full_info_parts.append(f"地址1: {consignee_info.get('address1')}")
+                    if consignee_info.get('address2'):
+                        full_info_parts.append(f"地址2: {consignee_info.get('address2')}")
+                    if consignee_info.get('fullAddress'):
+                        full_info_parts.append(f"完整地址: {consignee_info.get('fullAddress')}")
+                    if consignee_info.get('logisticsCompany'):
+                        full_info_parts.append(f"物流公司: {consignee_info.get('logisticsCompany')}")
+                    
+                    full_info = '\n'.join(full_info_parts)
+                    
+                    # 写入行
+                    worksheet.write(row_num, 0, country_name, cell_format)
+                    worksheet.write(row_num, 1, name, cell_format)
+                    worksheet.write(row_num, 2, phone, cell_format)
+                    worksheet.write(row_num, 3, province_zip, cell_format)
+                    worksheet.write(row_num, 4, buyer_message, cell_format)
+                    worksheet.write(row_num, 5, full_info, cell_format)
+                    
+                    row_num += 1
+                    
+                except Exception as e:
+                    if self.debug:
+                        print(f"   ⚠️ 解析订单数据失败: {e}")
+                    continue
+            
+            # 自动调整列宽
+            worksheet.set_column('A:A', 15)  # 收件地区
+            worksheet.set_column('B:B', 20)  # 收件人姓名
+            worksheet.set_column('C:C', 15)  # 联系电话
+            worksheet.set_column('D:D', 30)  # 省州/邮编
+            worksheet.set_column('E:E', 30)  # 买家留言
+            worksheet.set_column('F:F', 50)  # 完整信息
+            
+            # 关闭工作簿
+            workbook.close()
+            
+            actual_count = row_num - 1
+            print(f"\n{'='*60}")
+            print(f"✅ 导出成功！")
+            print(f"={'='*60}")
+            print(f"📊 导出数量: {actual_count} 条")
+            print(f"📁 文件位置: {output_file}")
+            print(f"={'='*60}\n")
+            
+            return str(output_file)
+            
+        except Exception as e:
+            print(f"❌ 导出失败: {e}")
+            import traceback
+            traceback.print_exc()
+            return None
+    
     def collect_all_recipients(self) -> int:
         """
+        （已废弃）此方法保留但不再使用
+        现在使用实时API监听+导出临时变量的方式
+        
+        Returns:
+            成功采集的数量
+        """
+        print("⚠️ 此方法已废弃，请使用 'e' 导出最新捕获的数据")
+        return 0
+    
+    def _old_collect_method(self) -> int:
+        """
+        旧的采集方法（已废弃，仅作备份）
         自动点击搜索按钮并监听API请求获取订单数据（节点8-13）
         
         Returns:
@@ -974,79 +1204,66 @@ class MiaoshouERPCollector:
                 print("✅ 检测到已登录状态")
             
             # 支持多次手动触发采集
-            total_collected = 0
             while True:
                 print("\n" + "="*60)
                 print("📋 操作菜单：")
-                print("  [回车] - 开始采集（程序自动点击搜索按钮）")
-                print("  [e]   - 导出 Excel 文件（自动清空缓存）")
-                print("  [n]   - 清空已采集数据")
+                print("  [回车] - 导出最新捕获的数据到 Excel 文件（自动清空）")
                 print("  [q]   - 退出程序")
-                print(f"📊 当前累计: {len(self.recipient_data)} 条")
+                if self.latest_api_data:
+                    print(f"📊 当前捕获: {len(self.latest_api_data)} 条数据")
+                else:
+                    print("📊 当前捕获: 无数据")
+                print("💡 提示: 程序正在后台监听 searchOrderPackageList 接口，请在页面上操作（筛选、搜索等），数据会自动捕获")
                 print("="*60)
-                user_input = input("请选择操作：").strip().lower()
+                
+                # 使用非阻塞方式等待用户输入，同时保持事件循环活跃
+                import sys
+                import select
+                import time
+                
+                print("请选择操作：", end='', flush=True)
+                
+                user_input = None
+                # 在等待用户输入的同时，定期处理浏览器事件
+                while user_input is None:
+                    # 检查是否有输入（非阻塞）
+                    if sys.platform == 'win32':
+                        # Windows下使用msvcrt
+                        import msvcrt
+                        if msvcrt.kbhit():
+                            user_input = input().strip().lower()
+                    else:
+                        # Unix/Linux/Mac使用select
+                        ready, _, _ = select.select([sys.stdin], [], [], 0.1)
+                        if ready:
+                            user_input = sys.stdin.readline().strip().lower()
+                    
+                    # 处理浏览器事件，保持监听器活跃
+                    if self.page and user_input is None:
+                        try:
+                            # 执行一个轻量级操作来触发事件循环
+                            self.page.evaluate('() => true')
+                        except:
+                            pass
+                        time.sleep(0.1)  # 避免CPU占用过高
                 
                 if user_input == 'q':
                     print("👋 退出程序...")
                     break
                     
-                elif user_input == 'e':
-                    # 导出 Excel
-                    if len(self.recipient_data) == 0:
-                        print("⚠️ 没有数据可导出，请先采集数据")
-                        continue
-                    
-                    export_path = self.export_to_excel()
+                elif user_input == '' or user_input == 'e':
+                    # 回车键或e键 - 导出最新捕获的API数据
+                    export_path = self.export_latest_data_to_excel()
                     if export_path:
-                        print("\n" + "="*60)
-                        print("✅ 导出成功！")
-                        print("="*60)
-                        print(f"📊 导出数量: {len(self.recipient_data)} 条")
-                        print(f"📁 文件位置: {export_path}")
-                        print("="*60)
-                        
-                        # 导出成功后自动清空缓存
-                        self.recipient_data = []
-                        total_collected = 0
-                        print("🧹 已自动清空采集数据，可以开始新一轮采集")
-                    continue
-                    
-                elif user_input == 'n':
-                    if len(self.recipient_data) == 0:
-                        print("🚨 当前没有数据")
-                    else:
-                        confirm = input(f"⚠️ 确认清空 {len(self.recipient_data)} 条数据？(y/n): ").strip().lower()
-                        if confirm == 'y':
-                            self.recipient_data = []
-                            total_collected = 0
-                            print("🧹 已清空所有采集数据")
-                        else:
-                            print("❌ 取消清空操作")
+                        # 导出成功后自动清空临时数据
+                        self.latest_api_data = None
+                        print("🧹 已自动清空缓存数据，请继续筛选和搜索新的订单")
                     continue
                 
-                # 默认（回车或其他输入）- 执行采集
-                # 节点7-13: 监听API获取订单数据
-                collected_count = self.collect_all_recipients()
-                total_collected += collected_count
-                
-                print(f"\n📊 本次采集: {collected_count} 条，累计: {len(self.recipient_data)} 条")
-                # 循环继续，等待用户下一次手动触发
-            
-            # 退出时检查是否有未导出的数据
-            if len(self.recipient_data) > 0:
-                print(f"\n📊 当前还有 {len(self.recipient_data)} 条未导出的数据")
-                export_confirm = input("是否导出？(y/n): ").strip().lower()
-                if export_confirm == 'y':
-                    export_path = self.export_to_excel()
-                    if export_path:
-                        print("\n" + "="*60)
-                        print("✅ 导出成功！")
-                        print("="*60)
-                        print(f"📊 导出数量: {len(self.recipient_data)} 条")
-                        print(f"📁 文件位置: {export_path}")
-                        print("="*60)
                 else:
-                    print("⚠️ 数据未导出，将直接退出")
+                    # 其他输入，提示用户
+                    print("⚠️ 无效的操作，请按回车导出或输入 'q' 退出")
+                    continue
             
             print("\n👋 程序已退出")
             return True                
